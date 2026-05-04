@@ -57,49 +57,47 @@ def erans_encode_streaming(data):
         shrub.inc(s)
         c, f = shrub.sym2cdf(s)
 
-        # renorm:
-        # we need state_after = (state//f)*M + (state%f) + c
-        # to be in [M, 256*M).
-        # this is guaranteed if state_before is in [f, 256*f)
-        limit = f * 256
-        while state >= limit:
-            b = state % 256
-            encoded.append(b)
-            state //= 256
-            print(f"emitted: {b=} {state=}")
+        # the post-encode state is in [M, 256*M)
 
-        # standard rans encoding step
-        state = (state // f) * M + (state % f) + c
-        print(f"encoding: {state=} {c=} {f=} {M=} {shrub=} {encoded=}")
+        # for the encoding step    state' = (state//f)*M + (state%f) + c
+        # to land in [M, 256*M), the pre-encode state must be in [f, 256*f)
+
+        # coming from the previous step, state is in [M_prev, 256*M_prev) where M_prev = M - 1
+        # upper bound: shift bytes out while state >= 256*f
+        # lower bound: automatic when f <= M_prev = M - 1, since state >= M_prev >= f.
+
+        # the one case that breaks is f == M (all symbols seen so far are this one):
+        # then the symbol is fully predicted, the ideal code length is 0, and we just leave state alone
+        if f < M:
+            while state >= f * 256:
+                b = state % 256
+                encoded.append(b)
+                state //= 256
+
+            state = (state // f) * M + (state % f) + c
 
     return state, shrub, encoded
 
 def erans_decode_streaming(state, shrub, encoded):
     M = shrub.total()
-    ptr = 0
     out = []
 
     while M > 0:
-        # slot is always < M because we ensure state >= M
         slot = state % M
         c, f, s = shrub.cdf2sym(slot)
         shrub.dec(s)
 
-        # standard rans decoding step
-        state = (state // M) * f + (slot - c)
+        # mirror of the encoder: skip the step entirely when f == M, since the encoder didn't change state for that symbol
+        if f < M:
+            state = (state // M) * f + (slot - c)
+
         out.append(s)
-
-        print(f"decoding: {state=} {slot=} {c=} {f=} {M=} {shrub=} {out=}")
-
         M -= 1
 
-        # renorm:
-        # if state dropped below the new M, pull bytes until state >= M
-        while state < M and ptr < len(encoded):
-            b = encoded[ptr]
+        # rans is a stack: pop bytes in reverse order of emission (LIFO)
+        while state < M and encoded:
+            b = encoded.pop()
             state = (state << 8) | b
-            print(f"pulled: {b=} {state=}")
-            ptr += 1
 
     return ''.join(out)
 
@@ -113,6 +111,7 @@ if __name__ == "__main__":
     print("======================")
     result = erans_decode(state, shrub)
     print(f"decoded: {result=}")
+    assert result == data
 
     print("\n\n")
     print("streaming mode")
@@ -121,3 +120,4 @@ if __name__ == "__main__":
     print("======================")
     result = erans_decode_streaming(state, shrub, encoded)
     print(f"decoded: {result=}")
+    assert result == data
