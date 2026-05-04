@@ -125,6 +125,7 @@ if __name__ == "__main__":
     print("\n\n")
     print("round-trip tests")
     import random
+    import time
     random.seed(0)
     cases = [
         ("empty",            ""),
@@ -155,3 +156,34 @@ if __name__ == "__main__":
         # both encoders must agree on the histogram
         assert bn_shrub.counts == st_shrub.counts, f"shrub mismatch: {name}"
         print(f"  {name:18s} N={len(data):5d}  bignum={bn_bits:6d}b  stream={st_bits:6d}b")
+
+    print("\n\n")
+    print("benchmarks (streaming mode)")
+    def run_benchmark(name, data):
+        start = time.perf_counter()
+        shrub, encoded = erans_encode_streaming(data)
+        enc_time = time.perf_counter() - start
+
+        start = time.perf_counter()
+        result = erans_decode_streaming(shrub, list(encoded))
+        dec_time = time.perf_counter() - start
+
+        assert result == data
+
+        in_bytes = len(data)
+        out_bytes = len(encoded)
+        ratio = in_bytes / out_bytes
+
+        enc_mbs = (in_bytes / 1024 / 1024) / enc_time if enc_time > 0 else 0
+        dec_mbs = (in_bytes / 1024 / 1024) / dec_time if dec_time > 0 else 0
+
+        print(f"  {name:18s} N={in_bytes:7d}  ratio={ratio:10.2f}x  enc={enc_mbs:6.3f}MB/s  dec={dec_mbs:6.3f}MB/s")
+
+    # bignum version is too slow
+    cases += [
+        ("long random", "".join(chr(random.randint(0, 255)) for _ in range(1000000))),
+        ("long skewed", "".join(random.choice("abcdefghij" + "a" * 90) for _ in range(1000000))),
+    ]
+    for name, data in cases:
+        if len(data) >= 1000:
+            run_benchmark(name, data)
