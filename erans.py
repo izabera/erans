@@ -66,38 +66,38 @@ def erans_encode_streaming(data):
         # upper bound: shift bytes out while state >= 256*f
         # lower bound: automatic when f <= M_prev = M - 1, since state >= M_prev >= f.
 
-        # the one case that breaks is f == M (all symbols seen so far are this one):
-        # then the symbol is fully predicted, the ideal code length is 0, and we just leave state alone
-        if f < M:
-            while state >= f * 256:
-                b = state % 256
-                encoded.append(b)
-                state //= 256
+        while state >= f * 256:
+            b = state % 256
+            encoded.append(b)
+            state //= 256
 
-            state = (state // f) * M + (state % f) + c
+        state = (state // f) * M + (state % f) + c
 
-    return state, shrub, encoded
+    # flush: drain state byte by byte.  the decoder will pull bytes back from
+    # the tail until state >= M, which exactly recovers what we had here
+    while state > 0:
+        encoded.append(state % 256)
+        state //= 256
 
-def erans_decode_streaming(state, shrub, encoded):
-    M = shrub.total()
+    return shrub, encoded
+
+def erans_decode_streaming(shrub, encoded):
+    state = 0
     out = []
 
-    while M > 0:
+    for M in range(shrub.total(),0,-1):
+        # rans is a stack: pop bytes in reverse order of emission (LIFO)
+        # on the first iteration this also reconstructs the flushed state
+        while state < M and encoded:
+            state = (state << 8) | encoded.pop()
+
         slot = state % M
         c, f, s = shrub.cdf2sym(slot)
         shrub.dec(s)
 
-        # mirror of the encoder: skip the step entirely when f == M, since the encoder didn't change state for that symbol
-        if f < M:
-            state = (state // M) * f + (slot - c)
+        state = (state // M) * f + (slot - c)
 
         out.append(s)
-        M -= 1
-
-        # rans is a stack: pop bytes in reverse order of emission (LIFO)
-        while state < M and encoded:
-            b = encoded.pop()
-            state = (state << 8) | b
 
     return ''.join(out)
 
@@ -115,10 +115,10 @@ if __name__ == "__main__":
 
     print("\n\n")
     print("streaming mode")
-    state, shrub, encoded = erans_encode_streaming(data)
-    print(f"encoded: {state=} {shrub=} {encoded=}")
+    shrub, encoded = erans_encode_streaming(data)
+    print(f"encoded: {shrub=} {encoded=}")
     print("======================")
-    result = erans_decode_streaming(state, shrub, encoded)
+    result = erans_decode_streaming(shrub, list(encoded))
     print(f"decoded: {result=}")
     assert result == data
 
@@ -146,10 +146,11 @@ if __name__ == "__main__":
         assert erans_decode(bn_state, bn_shrub) == data, f"bignum failed: {name}"
 
         # streaming
-        st_state, st_shrub, encoded = erans_encode_streaming(data)
+        st_shrub, encoded = erans_encode_streaming(data)
         bn_bits = bn_state.bit_length()
-        st_bits = st_state.bit_length() + 8 * len(encoded)
-        assert erans_decode_streaming(st_state, st_shrub, encoded) == data, f"streaming failed: {name}"
+        st_bits = 8 * len(encoded)
+        # the decoder mutates the encoded list (pop), so measure first
+        assert erans_decode_streaming(st_shrub, list(encoded)) == data, f"streaming failed: {name}"
 
         # both encoders must agree on the histogram
         assert bn_shrub.counts == st_shrub.counts, f"shrub mismatch: {name}"

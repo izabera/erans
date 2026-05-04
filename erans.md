@@ -156,8 +156,9 @@ def erans_encode(data):
     return state, counts
 ```
 
-like with normal rANS, you can keep the state in [L, L*m) and renormalize/emit
-bytes as you progress.
+this is the bignum form: state grows without bound as we encode.  the streaming
+version that emits bytes as we go is described below; the renorm range needs to
+shift with M because, unlike standard rANS, M changes every step.
 
 the backward traversal accumulates suffix counts, i.e. counts of symbols from
 the current position to the end.
@@ -193,6 +194,90 @@ def erans_decode(state, length, total):
     return out
 ```
 
+
+
+streaming
+---------
+
+(this uses a structure i'm calling a shrub, see below for details).
+
+we want state in a fixed range, with the overflow going out as bytes.  the
+post-encode invariant is state in [M, 256*M).  the C step
+
+    state' = (state // f) * M + (state % f) + c
+
+lands in this range iff the pre-encode state is in [f, 256*f).
+
+coming out of the previous step, state is in [M-1, 256*(M-1)).  shifting bytes
+out while state >= 256*f handles the upper bound.  the lower bound is automatic
+when f <= M-1, since state >= M-1 >= f.
+
+the one boundary is f = M (all symbols seen so far are this one).  this can
+only happen during a contiguous prefix of the encoder pass (a contiguous suffix
+of the data) and during that prefix:
+
+  - c = 0 (only one symbol exists in the shrub)
+  - state stays at 1, since (1 // M) * M + (1 % M) + 0 = 1
+  - the renorm condition state >= 256*M never fires at state = 1
+
+so the formula degenerates to a no-op on its own, no special case needed.
+
+```
+def erans_encode_streaming(data):
+    shrub = Shrub()
+    state = 1
+    encoded = []
+
+    for M, s in enumerate(reversed(data), 1):
+        shrub.inc(s)
+        c, f = shrub.sym2cdf(s)
+
+        while state >= f * 256:
+            encoded.append(state % 256)
+            state //= 256
+
+        state = (state // f) * M + (state % f) + c
+
+    # flush the remaining state byte by byte
+    while state > 0:
+        encoded.append(state % 256)
+        state //= 256
+
+    return shrub, encoded
+```
+
+no length prefix is needed for the flush.  the encoder's final state is in
+[M_final, 256*M_final), so when the decoder pulls bytes until state >= M_final,
+that pull stops at exactly the encoder's final state.
+
+the decoder mirrors this.  rANS is a stack: the encoder pushes bytes by
+appending, so the decoder must pop from the tail (LIFO).
+
+```
+def erans_decode_streaming(shrub, encoded):
+    state = 0
+    out = []
+
+    for M in range(shrub.total(),0,-1):
+        # pull bytes (LIFO) to keep state >= M
+        # on the first iteration this also reconstructs the flushed final state from the tail
+        while state < M and encoded:
+            state = (state << 8) | encoded.pop()
+
+        slot = state % M
+        c, f, s = shrub.cdf2sym(slot)
+        shrub.dec(s)
+
+        state = (state // M) * f + (slot - c)
+        out.append(s)
+
+    return out
+```
+
+the f = M case mirrors on the decoder side too: state stays at 1 throughout the
+all-same tail, slot = 1 % M = 1 always finds the only symbol with nonzero
+count, and the C step gives state = (1 // M) * M + 1 - 0 = 1.
+
 the pseudocode above looks incredibly slow.
 thankfully, modern hardware can do better.
 
@@ -221,6 +306,8 @@ going from byte to cdf is just `top[byte >> 4] + bottom[byte & 0xf]`.
 
 since the cdf is monotonic, we can go in the opposite direction with a simple
 vector compare, which produces a mask of all indices <= target.
+
+my fiancé came up with the name and it is perfect.
 
 
 
