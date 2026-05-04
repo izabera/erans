@@ -121,3 +121,36 @@ if __name__ == "__main__":
     result = erans_decode_streaming(state, shrub, encoded)
     print(f"decoded: {result=}")
     assert result == data
+
+    print("\n\n")
+    print("round-trip tests")
+    import random
+    random.seed(0)
+    cases = [
+        ("empty",            ""),
+        ("single",           "a"),
+        ("two same",         "aa"),
+        ("two diff",         "ab"),
+        ("all same short",   "a" * 10),
+        ("all same long",    "x" * 10000),                       # f == M every step
+        ("two symbols",      "ab" * 500),
+        ("ramp into new",    "a" * 50 + "b" * 50),               # long f==M prefix in reversed order
+        ("binary",           "".join(random.choice("01") for _ in range(2000))),
+        ("ascii",            "".join(chr(random.randint(32, 126)) for _ in range(5000))),
+        ("full byte range",  "".join(chr(random.randint(0, 255)) for _ in range(5000))),
+        ("skewed",           "".join(random.choice("aaaaaaaaab") for _ in range(2000))),
+    ]
+    for name, data in cases:
+        # bignum
+        bn_state, bn_shrub = erans_encode(data)
+        assert erans_decode(bn_state, bn_shrub) == data, f"bignum failed: {name}"
+
+        # streaming
+        st_state, st_shrub, encoded = erans_encode_streaming(data)
+        bn_bits = bn_state.bit_length()
+        st_bits = st_state.bit_length() + 8 * len(encoded)
+        assert erans_decode_streaming(st_state, st_shrub, encoded) == data, f"streaming failed: {name}"
+
+        # both encoders must agree on the histogram
+        assert bn_shrub.counts == st_shrub.counts, f"shrub mismatch: {name}"
+        print(f"  {name:18s} N={len(data):5d}  bignum={bn_bits:6d}b  stream={st_bits:6d}b")
