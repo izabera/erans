@@ -4,7 +4,7 @@ TARGET = native
 
 CXX = clang++
 MCAFLAGS = -mcpu=$(TARGET)
-CXXFLAGS = -march=$(TARGET) -std=c++23 -O3 -ffast-math
+CXXFLAGS = -march=$(TARGET) -std=c++23 -O3 -ffast-math -Wall -Wextra -Wno-psabi
 
 # add a horrible probe because clang is a bit too conservative sometimes
 ZMM_PROBE = $(shell echo 'void f(i32x16 &p){p+=p;}' | \

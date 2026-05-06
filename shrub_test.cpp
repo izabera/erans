@@ -3,21 +3,6 @@
 #include <string>
 #include <cassert>
 
-void Shrub::debug() const {
-    auto show = [](auto &vec, auto prefix) {
-        std::cout << prefix << ' ';
-        for (auto i = 0; i < 16; i++)
-            std::cout << vec[i] << ' ';
-        std::cout << std::endl;
-    };
-    show(top, "top:       ");
-    for (auto i = 0; i < 16; i++) {
-        char prefix[20];
-        sprintf(prefix, "bottom[%2d]:", i);
-        show(bottom[i], prefix);
-    }
-};
-
 int main() {
     Shrub s;
     std::string test_data = "this is a test string with some characters!@#$%^&*()_+~`1234567890-=\\][{}|;':\",./<>?";
