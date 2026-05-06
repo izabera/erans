@@ -7,6 +7,28 @@ using i16 = int16_t; using u16 = uint16_t; using f16 = _Float16; using bf16 = __
 using i32 = int32_t; using u32 = uint32_t; using f32 = _Float32;
 using i64 = int64_t; using u64 = uint64_t; using f64 = _Float64;
 
+template <typename V>
+inline u32 cmp_gt_mask(V a, V b) {
+#if defined(__AVX512F__)
+    return _mm512_cmpgt_epi32_mask((__m512i)a, (__m512i)b);
+#elif defined(__AVX2__)
+    __m256i a_lo = *(__m256i*)&a;
+    __m256i a_hi = *((__m256i*)&a + 1);
+    __m256i b_lo = *(__m256i*)&b;
+    __m256i b_hi = *((__m256i*)&b + 1);
+    u32 m_lo = _mm256_movemask_ps((__m256)_mm256_cmpgt_epi32(a_lo, b_lo));
+    u32 m_hi = _mm256_movemask_ps((__m256)_mm256_cmpgt_epi32(a_hi, b_hi));
+    return m_lo | (m_hi << 8);
+#else
+    u32 mask = 0;
+    auto cmp = a > b;
+    for (int i = 0; i < 16; i++) {
+        if (cmp[i]) mask |= (1 << i);
+    }
+    return mask;
+#endif
+}
+
 template <typename t, int n>
 struct simd {
     using unaligned __attribute__((vector_size(sizeof(t)*n),aligned(1)))           = t;

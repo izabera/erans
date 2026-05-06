@@ -74,42 +74,23 @@ struct Shrub {
     }
 #endif
 
-     __attribute__((always_inline))
-     u8 cdf2sym(u32 v, cf& cf) const {
-         auto &[c, f] = cf;
+    __attribute__((always_inline))
+    u8 cdf2sym(u32 v, cf& out_cf) const {
+        auto v_target = u32x16{v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v};
+        u32 mask_g = cmp_gt_mask(top, v_target);
+        u32 group = (mask_g == 0) ? 15 : __builtin_ctz(mask_g) - 1;
 
-         __m256i v_target = _mm256_set1_epi32(v);
+        u32 r = v - top[group];
+        auto v_ltarget = u32x16{r,r,r,r, r,r,r,r, r,r,r,r, r,r,r,r};
+        u32 mask_l = cmp_gt_mask(bottom[group], v_ltarget);
+        u32 lane = (mask_l == 0) ? 15 : __builtin_ctz(mask_l) - 1;
 
-         __m256i v_top_lo = _mm256_load_si256((const __m256i*)&top + 0);
-         __m256i v_top_hi = _mm256_load_si256((const __m256i*)&top + 1);
+        u8 s = (group << 4) | lane;
+        out_cf.c = top[group] + bottom[group][lane];
+        out_cf.f = counts[s];
+        return s;
+    }
 
-         __m256i cmp_top_lo = _mm256_cmpgt_epi32(v_top_lo, v_target);
-         __m256i cmp_top_hi = _mm256_cmpgt_epi32(v_top_hi, v_target);
-
-         u32 mask_g = _mm256_movemask_ps(_mm256_castsi256_ps(cmp_top_lo)) |
-                     (_mm256_movemask_ps(_mm256_castsi256_ps(cmp_top_hi)) << 8);
-
-         u32 group = (mask_g == 0) ? 15 : __builtin_ctz(mask_g) - 1;
-
-         u32 r = v - top[group];
-         __m256i v_ltarget = _mm256_set1_epi32(r);
-
-         __m256i v_bot_lo = _mm256_load_si256((const __m256i*)&bottom[group] + 0);
-         __m256i v_bot_hi = _mm256_load_si256((const __m256i*)&bottom[group] + 1);
-
-         __m256i cmp_bot_lo = _mm256_cmpgt_epi32(v_bot_lo, v_ltarget);
-         __m256i cmp_bot_hi = _mm256_cmpgt_epi32(v_bot_hi, v_ltarget);
-
-         u32 mask_l = _mm256_movemask_ps(_mm256_castsi256_ps(cmp_bot_lo)) |
-                      (_mm256_movemask_ps(_mm256_castsi256_ps(cmp_bot_hi)) << 8);
-
-         u32 lane = (mask_l == 0) ? 15 : __builtin_ctz(mask_l) - 1;
-
-         u8 s = (group << 4) | lane;
-         c = top[group] + bottom[group][lane];
-         f = counts[s];
-         return s;
-     }
     void encode(u8 *out) const;
     void decode(const u8 *in);
 
