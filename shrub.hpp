@@ -67,8 +67,9 @@ struct Shrub {
         return s;
     }
 
-    u32 encode(u8 *out) const;
-    void decode(const u8 *in, u32 size);
+    // yolo
+    u8* encode(u8 *bytes);
+    u8* decode(u8 *bytes);
 
     void debug() const;
 };
