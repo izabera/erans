@@ -4,7 +4,7 @@ TARGET = native
 
 CXX = clang++
 MCAFLAGS = -mcpu=$(TARGET)
-CXXFLAGS = -march=$(TARGET) -std=c++23 -O3 -ffast-math -Wall -Wextra -Wno-psabi
+CXXFLAGS = -march=$(TARGET) -std=c++23 -O3 -ffast-math -Wall -Wextra -Wno-psabi -ggdb3
 
 # add a horrible probe because clang is a bit too conservative sometimes
 ZMM_PROBE = $(shell echo 'void f(i32x16 &p){p+=p;}' | \
@@ -15,7 +15,7 @@ ifeq ($(call ZMM_PROBE,),0)
   endif
 endif
 
-shrub:
+cli:
 
 mca: vec.s
 	llvm-mca $(MCAFLAGS) $< | awk -f mca.awk
