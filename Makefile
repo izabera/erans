@@ -15,7 +15,7 @@ ifeq ($(call ZMM_PROBE,),0)
   endif
 endif
 
-cli:
+cli: shrub.o erans.o
 
 mca: vec.s
 	llvm-mca $(MCAFLAGS) $< | awk -f mca.awk
