@@ -7,7 +7,7 @@ struct Shrub {
     u32x16 top{};        // cdf of all groups
     u32x16 bottom[16]{}; // cdf within each group
 
-    u32 counts[256]; // tracking all counts makes a couple of things more efficient
+    u32 counts[256]{}; // tracking all counts makes a couple of things more efficient
 
     struct view { u32x16_u val; } __attribute__((packed,may_alias));
 
@@ -31,8 +31,8 @@ struct Shrub {
         u32 hi = byte >> 4;
         u32 lo = byte & 15;
 
-        top        += reinterpret_cast<const view*>(bits+hi)->val;
-        bottom[lo] += reinterpret_cast<const view*>(bits+lo)->val;
+        top        += reinterpret_cast<const view*>(bits + 15 - hi)->val;
+        bottom[hi] += reinterpret_cast<const view*>(bits + 15 - lo)->val;
     }
 
     void dec(u8 byte) {
@@ -41,8 +41,8 @@ struct Shrub {
         u32 hi = byte >> 4;
         u32 lo = byte & 15;
 
-        top        -= reinterpret_cast<const view*>(bits+hi)->val;
-        bottom[hi] -= reinterpret_cast<const view*>(bits+lo)->val;
+        top        -= reinterpret_cast<const view*>(bits + 15 - hi)->val;
+        bottom[hi] -= reinterpret_cast<const view*>(bits + 15 - lo)->val;
     }
 
     struct cf { u32 c, f; };
@@ -74,15 +74,32 @@ struct Shrub {
     }
 #endif
 
-    __attribute__((always_inline))
-    u8 cdf2sym(u32 value, cf& cf) {
-        auto &[c, f] = cf;
-        auto vec = simd<u32,16>::set1(value);
-        auto less = top < vec;
+     __attribute__((always_inline))
+     u8 cdf2sym(u32 v, cf& cf) {
+         auto &[c, f] = cf;
 
-        // ?????
-    }
+         auto vec1 = u32x16{v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v};
+         auto less1 = top <= vec1; // 0 or -1
+
+         u32 sum1 = 0;
+         for (int i = 0; i < 16; ++i) sum1 -= less1[i];
+         u32 group = sum1 - 1;
+
+         u32 r = v - top[group];
+         auto vec2 = u32x16{r,r,r,r, r,r,r,r, r,r,r,r, r,r,r,r};
+         auto less2 = bottom[group] <= vec2;
+         u32 sum2 = 0;
+         for (int i = 0; i < 16; ++i) sum2 -= less2[i];
+         u32 lane = sum2 - 1;
+
+         u8 s = (group << 4) | lane;
+         c = top[group] + bottom[group][lane];
+         f = counts[s];
+         return s;
+     }
 
     void encode(u8 *out) const;
     void decode(const u8 *in);
+
+    void debug() const;
 };
