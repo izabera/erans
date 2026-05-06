@@ -7,8 +7,7 @@ struct Shrub {
     u32x16 top{};        // cdf of all groups
     u32x16 bottom[16]{}; // cdf within each group
 
-    // also track all counts, to make a couple of things more efficient
-    u32 counts[256];
+    u32 counts[256]; // tracking all counts makes a couple of things more efficient
 
     struct view { u32x16_u val; } __attribute__((packed,may_alias));
 
@@ -49,19 +48,19 @@ struct Shrub {
     struct cf { u32 c, f; };
 
     __attribute__((always_inline))
-    cf byte2cdf(u8 byte) const {
+    cf sym2cdf(u8 byte) const {
         // every other way to write this generates horrible code
         using u32_a __attribute__((may_alias)) = u32;
 
-        auto c = top[byte>>4] + reinterpret_cast<const u32*>(bottom)[byte];
+        auto c = top[byte>>4] + reinterpret_cast<const u32_a*>(bottom)[byte];
         auto f = counts[byte];
         return {c, f};
     }
 
     struct cfs { u32 c, f, s; };
 
-    __attribute__((always_inline))
-    u8 cdf2byte(u32 value) {
+#if 0
+    u8 cdf2sym(u32 value) {
         __m512i v = _mm512_set1_epi32(value);
 
         u16 le = _mm512_cmple_epi32_mask(top, v);
@@ -72,6 +71,16 @@ struct Shrub {
         u32 lane = 31 - _lzcnt_u32(le2);
 
         return (group << 4) | lane;
+    }
+#endif
+
+    __attribute__((always_inline))
+    u8 cdf2sym(u32 value, cf& cf) {
+        auto &[c, f] = cf;
+        auto vec = simd<u32,16>::set1(value);
+        auto less = top < vec;
+
+        // ?????
     }
 
     void encode(u8 *out) const;

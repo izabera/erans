@@ -12,7 +12,7 @@ struct simd {
     using unaligned __attribute__((vector_size(sizeof(t)*n),aligned(1)))           = t;
     using   aligned __attribute__((vector_size(sizeof(t)*n),aligned(sizeof(t)*n))) = t;
 
-    constexpr auto set1(t v) const {
+    constexpr static auto set1(t v) {
         if constexpr (n ==  4) return unaligned{v,v,v,v};
         if constexpr (n ==  8) return unaligned{v,v,v,v, v,v,v,v};
         if constexpr (n == 16) return unaligned{v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v};
