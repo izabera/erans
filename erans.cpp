@@ -1,22 +1,23 @@
 #include "erans.hpp"
 #include "shrub.hpp"
 #include "types.hpp"
+#include <cstring>
 
-// output layout:
-//   [ shrub histogram (variable, <= 577 bytes) ] [ rANS-encoded bytes ]
+// in-chunk layout:
+//   [ rANS-encoded bytes ] [ shrub histogram ] [ u32 hist_size (LE) ]
 //
-// the decoder reads the shrub from the front to recover the counts,
-// then pops bytes from the tail (rANS is a stack, LIFO).
+// the rANS bytes can be written directly to `out` as we encode; the histogram
+// is only known after one pass, so it is appended at the end.  the trailer
+// gives the decoder the histogram size so it can find the boundary (the
+// histogram has variable length: 1 + 32*k binary + variable unary bytes).
 
 void erans_encode(std::string_view in, std::string& out) {
     Shrub shrub;
     u64 state = 1;
     auto N = in.size();
 
-    // emit rANS bytes into a scratch buffer; we'll prepend the histogram
-    // once we've finished (only known after one full pass)
-    std::string encoded;
-    encoded.reserve(N + 16);
+    out.clear();
+    out.reserve(N + 577 + 4 + 16);
 
     for (u64 M = 1; M <= N; M++) {
         u8 s = u8(in[N - M]);
@@ -28,7 +29,7 @@ void erans_encode(std::string_view in, std::string& out) {
         // out while state >= 256*f.  the lower bound is automatic since
         // state >= M-1 >= f (the f == M case stays at state = 1 forever)
         while (state >= (u64(f) << 8)) {
-            encoded.push_back(u8(state));
+            out.push_back(u8(state));
             state >>= 8;
         }
 
@@ -37,25 +38,32 @@ void erans_encode(std::string_view in, std::string& out) {
 
     // flush state byte by byte; the decoder pulls them back from the tail
     while (state) {
-        encoded.push_back(u8(state));
+        out.push_back(u8(state));
         state >>= 8;
     }
 
-    out.clear();
-    out.resize(577); // shrub upper bound: 1 byte k + 32*k binary + ~64 unary
-    auto base = reinterpret_cast<u8*>(out.data());
-    auto end  = shrub.encode(base);
-    out.resize(end - base);
-    out.append(encoded);
+    // append the histogram (worst case 577 bytes), then trim to actual size
+    auto rans_end = out.size();
+    out.resize(rans_end + 577);
+    auto hist_base = reinterpret_cast<u8*>(out.data()) + rans_end;
+    auto hist_end  = shrub.encode(hist_base);
+    u32 hist_size  = u32(hist_end - hist_base);
+
+    out.resize(rans_end + hist_size + 4);
+    std::memcpy(out.data() + rans_end + hist_size, &hist_size, 4);
 }
 
 void erans_decode(std::string_view in, std::string& out) {
     Shrub shrub;
 
-    // Shrub::decode wants a non-const pointer but only reads
-    auto base = reinterpret_cast<u8*>(const_cast<char*>(in.data()));
+    auto base   = reinterpret_cast<u8*>(const_cast<char*>(in.data()));
     auto in_end = base + in.size();
-    auto p = shrub.decode(base);
+
+    u32 hist_size;
+    std::memcpy(&hist_size, in_end - 4, 4);
+
+    auto hist_start = in_end - 4 - hist_size;
+    shrub.decode(hist_start);
 
     u32 total = 0;
     for (auto c : shrub.counts) total += c;
@@ -63,14 +71,14 @@ void erans_decode(std::string_view in, std::string& out) {
     out.clear();
     out.resize(total);
 
-    // bytes [p, in_end) are the rANS stream; pop from the tail
-    auto tail = in_end;
+    // rANS bytes are [base, hist_start); pop from the tail (LIFO)
+    auto tail = hist_start;
 
     u64 state = 0;
     for (u64 M = total; M >= 1; M--) {
-        // pull bytes (LIFO) until state is back in [M, 256*M).
+        // pull bytes until state is back in [M, 256*M).
         // first iteration also reconstructs the encoder's flushed state.
-        while (state < M && tail > p)
+        while (state < M && tail > base)
             state = (state << 8) | *--tail;
 
         u32 slot = state % M;
