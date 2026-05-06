@@ -8,29 +8,44 @@ using i32 = int32_t; using u32 = uint32_t; using f32 = _Float32;
 using i64 = int64_t; using u64 = uint64_t; using f64 = _Float64;
 
 template <typename t, int n>
-using simd __attribute__((vector_size(sizeof(t)*n),aligned(sizeof(t)*n))) = t;
+struct simd {
+    using unaligned __attribute__((vector_size(sizeof(t)*n),aligned(1)))           = t;
+    using   aligned __attribute__((vector_size(sizeof(t)*n),aligned(sizeof(t)*n))) = t;
 
-using i8x4   = simd<i8 , 4>; using u8x4   = simd<u8 , 4>;
-using i16x4  = simd<i16, 4>; using u16x4  = simd<u16, 4>; using f16x4  = simd<f16, 4>; using bf16x4  = simd<bf16, 4>;
-using i32x4  = simd<i32, 4>; using u32x4  = simd<u32, 4>; using f32x4  = simd<f32, 4>;
-using i64x4  = simd<i64, 4>; using u64x4  = simd<u64, 4>; using f64x4  = simd<f64, 4>;
+    constexpr auto set1(t v) const {
+        if constexpr (n ==  4) return unaligned{v,v,v,v};
+        if constexpr (n ==  8) return unaligned{v,v,v,v, v,v,v,v};
+        if constexpr (n == 16) return unaligned{v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v};
+        if constexpr (n == 32)
+            return unaligned{
+                v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v,
+                v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v,
+            };
+        if constexpr (n == 64)
+            return unaligned{
+                v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v,
+                v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v,
+                v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v,
+                v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v,
+            };
+    }
+};
 
-using i8x8   = simd<i8 , 8>; using u8x8   = simd<u8 , 8>;
-using i16x8  = simd<i16, 8>; using u16x8  = simd<u16, 8>; using f16x8  = simd<f16, 8>; using bf16x8  = simd<bf16, 8>;
-using i32x8  = simd<i32, 8>; using u32x8  = simd<u32, 8>; using f32x8  = simd<f32, 8>;
-using i64x8  = simd<i64, 8>; using u64x8  = simd<u64, 8>; using f64x8  = simd<f64, 8>;
+#define XAll(...) \
+    X( i8,__VA_ARGS__); X( u8,__VA_ARGS__); \
+    X(i16,__VA_ARGS__); X(u16,__VA_ARGS__); X(f16,__VA_ARGS__); X(bf16,__VA_ARGS__); \
+    X(i32,__VA_ARGS__); X(u32,__VA_ARGS__); X(f32,__VA_ARGS__); \
+    X(i64,__VA_ARGS__); X(u64,__VA_ARGS__); X(f64,__VA_ARGS__);
 
-using i8x16  = simd<i8 ,16>; using u8x16  = simd<u8 ,16>;
-using i16x16 = simd<i16,16>; using u16x16 = simd<u16,16>; using f16x16 = simd<f16,16>; using bf16x16 = simd<bf16,16>;
-using i32x16 = simd<i32,16>; using u32x16 = simd<u32,16>; using f32x16 = simd<f32,16>;
-using i64x16 = simd<i64,16>; using u64x16 = simd<u64,16>; using f64x16 = simd<f64,16>;
+#define X(t,w) using t##x##w = simd<t,w>::aligned; using t##x##w##_u = simd<t,w>::unaligned;
+#define Simd(w) XAll(w)
 
-using i8x32  = simd<i8 ,32>; using u8x32  = simd<u8 ,32>;
-using i16x32 = simd<i16,32>; using u16x32 = simd<u16,32>; using f16x32 = simd<f16,32>; using bf16x32 = simd<bf16,32>;
-using i32x32 = simd<i32,32>; using u32x32 = simd<u32,32>; using f32x32 = simd<f32,32>;
-using i64x32 = simd<i64,32>; using u64x32 = simd<u64,32>; using f64x32 = simd<f64,32>;
+Simd(4)
+Simd(8)
+Simd(16)
+Simd(32)
+Simd(64)
 
-using i8x64  = simd<i8 ,64>; using u8x64  = simd<u8 ,64>;
-using i16x64 = simd<i16,64>; using u16x64 = simd<u16,64>; using f16x64 = simd<f16,64>; using bf16x64 = simd<bf16,64>;
-using i32x64 = simd<i32,64>; using u32x64 = simd<u32,64>; using f32x64 = simd<f32,64>;
-using i64x64 = simd<i64,64>; using u64x64 = simd<u64,64>; using f64x64 = simd<f64,64>;
+#undef X
+#undef XAll
+#undef Simd
