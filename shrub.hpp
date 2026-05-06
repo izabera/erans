@@ -75,29 +75,41 @@ struct Shrub {
 #endif
 
      __attribute__((always_inline))
-     u8 cdf2sym(u32 v, cf& cf) {
+     u8 cdf2sym(u32 v, cf& cf) const {
          auto &[c, f] = cf;
 
-         auto vec1 = u32x16{v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v};
-         auto less1 = top <= vec1; // 0 or -1
+         __m256i v_target = _mm256_set1_epi32(v);
 
-         u32 sum1 = 0;
-         for (int i = 0; i < 16; ++i) sum1 -= less1[i];
-         u32 group = sum1 - 1;
+         __m256i v_top_lo = _mm256_load_si256((const __m256i*)&top + 0);
+         __m256i v_top_hi = _mm256_load_si256((const __m256i*)&top + 1);
+
+         __m256i cmp_top_lo = _mm256_cmpgt_epi32(v_top_lo, v_target);
+         __m256i cmp_top_hi = _mm256_cmpgt_epi32(v_top_hi, v_target);
+
+         u32 mask_g = _mm256_movemask_ps(_mm256_castsi256_ps(cmp_top_lo)) |
+                     (_mm256_movemask_ps(_mm256_castsi256_ps(cmp_top_hi)) << 8);
+
+         u32 group = (mask_g == 0) ? 15 : __builtin_ctz(mask_g) - 1;
 
          u32 r = v - top[group];
-         auto vec2 = u32x16{r,r,r,r, r,r,r,r, r,r,r,r, r,r,r,r};
-         auto less2 = bottom[group] <= vec2;
-         u32 sum2 = 0;
-         for (int i = 0; i < 16; ++i) sum2 -= less2[i];
-         u32 lane = sum2 - 1;
+         __m256i v_ltarget = _mm256_set1_epi32(r);
+
+         __m256i v_bot_lo = _mm256_load_si256((const __m256i*)&bottom[group] + 0);
+         __m256i v_bot_hi = _mm256_load_si256((const __m256i*)&bottom[group] + 1);
+
+         __m256i cmp_bot_lo = _mm256_cmpgt_epi32(v_bot_lo, v_ltarget);
+         __m256i cmp_bot_hi = _mm256_cmpgt_epi32(v_bot_hi, v_ltarget);
+
+         u32 mask_l = _mm256_movemask_ps(_mm256_castsi256_ps(cmp_bot_lo)) |
+                      (_mm256_movemask_ps(_mm256_castsi256_ps(cmp_bot_hi)) << 8);
+
+         u32 lane = (mask_l == 0) ? 15 : __builtin_ctz(mask_l) - 1;
 
          u8 s = (group << 4) | lane;
          c = top[group] + bottom[group][lane];
          f = counts[s];
          return s;
      }
-
     void encode(u8 *out) const;
     void decode(const u8 *in);
 
