@@ -80,7 +80,7 @@ struct rice {
                 buf = bits = 0;
             }
         }
-        if (bits) *bytes = u8(buf);
+        if (bits) *bytes++ = u8(buf);
         return bytes;
     }
 
@@ -188,5 +188,81 @@ u8* Shrub::decode(u8 *bytes) {
 
 
 
-constexpr static bool check_rice() { return true; }
+#if RUNTIME_TESTS
+#include <cstdio>
+#define LOG(...) printf(__VA_ARGS__)
+#else
+#define LOG(...)
+#endif
+
+// XXX: this doesn't compile because k=0 has too many iterations in unary
+#ifdef COMPTIME_TESTS
+constexpr
+#endif
+static bool check_rice() {
+    constexpr auto max = 24*1024*1024;
+
+    u32 vals[256]{};
+    u32 decoded[256]{};
+    u8 buffer[(max+256)/8]{}; // worst case is 2^24 + 256 bits = just over 2mb
+
+    struct pcg32 {
+        u64 state = 987654321, inc = 1234567;
+
+        constexpr u32 gen() {
+            auto old = state;
+            state = old * 6364136223846793005ull + inc;
+            u32 xs = ((old >> 18) ^ old) >> 27;
+            u32 rot = old >> 59;
+            return (xs >> rot) | (xs << ((-rot)&31));
+        }
+    } rng;
+
+    auto test_k = [&](u32 k) {
+        auto budget = max;
+
+        // fill with random values that sum to 2^24
+        for (auto i = 0; i < 255; i++) {
+            auto v = rng.gen();
+            while (v > budget)
+                v >>= 1;
+            vals[i] = v;
+            budget -= v;
+            decoded[i] = 0;
+        }
+        vals[255] = budget;
+
+        u8 *enc, *dec;
+        enc = enc_binary(k, vals, buffer);
+        enc = enc_unary (k, vals, enc);
+
+        dec = dec_binary(k, decoded, buffer);
+        dec = dec_unary (k, decoded, dec);
+
+        if (enc != dec) {
+            LOG("mismatch enc=%p dec=%p\n", enc, dec);
+            return false;
+        }
+        for (auto i = 0; i < 256; i++) {
+            if (decoded[i] != vals[i]) {
+                LOG("mismatch at pos %d: vals=%u decoded=%u\n", i, vals[i], decoded[i]);
+                return false;
+            }
+        }
+        return true;
+    };
+
+    for (u32 k = 0; k <= 16; k++) {
+        LOG("check k=%u\n", k);
+        if (!test_k(k)) return false;
+    }
+
+    LOG("pass\n");
+    return true;
+}
+
+#ifdef COMPTIME_TESTS
 static_assert(check_rice());
+#elif RUNTIME_TESTS
+int main() { check_rice(); }
+#endif
