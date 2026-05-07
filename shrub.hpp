@@ -71,5 +71,11 @@ struct Shrub {
     u8* encode(u8 *bytes);
     u8* decode(u8 *bytes);
 
+    // reverse layout: [..unary..][..binary..][k].  encode_rev grows backward
+    // from `end` and returns the start of the histogram; decode_rev consumes
+    // backward from `end` and returns the start it found.
+    u8* encode_rev(u8 *end);
+    u8* decode_rev(u8 *end);
+
     void debug() const;
 };

@@ -1,4 +1,5 @@
 #include "shrub.hpp"
+#include "erans.hpp"
 #include <bit>
 #include <iostream>
 #include <cstdio>
@@ -102,6 +103,51 @@ struct rice {
         }
         return bytes;
     }
+
+    // same bit packing as enc_unary, but bytes are written backward in memory.
+    // reading bytes backward (LSB-first within each byte) reproduces the same
+    // forward bit stream, so dec_unary_rev is dec_unary with --bytes.
+    constexpr static u8* enc_unary_rev(u32 *__restrict vals, u8 *__restrict bytes) {
+        u64 buf = 0, bits = 0;
+        for (u32 i = 0; i < 256; i++) {
+            u32 q = vals[i] >> k;
+
+            while (q >= 8 - bits) {
+                *--bytes = u8(buf);
+                buf >>= 8;
+                q -= 8 - bits;
+                bits = 0;
+            }
+            bits += q;
+
+            buf |= u64(1) << bits;
+            if (++bits == 8) {
+                *--bytes = u8(buf);
+                buf = bits = 0;
+            }
+        }
+        if (bits) *--bytes = u8(buf);
+        return bytes;
+    }
+
+    constexpr static u8* dec_unary_rev(u32 *__restrict vals, u8 *__restrict bytes) {
+        u64 buf = 0, bits = 0;
+        for (u32 i = 0; i < 256; i++) {
+            u32 q = 0;
+            while (buf == 0) {
+                q += bits;
+                buf = *--bytes;
+                bits = 8;
+            }
+
+            u32 tz = __builtin_ctz(buf);
+            q += tz;
+            buf >>= tz + 1;
+            bits -= tz + 1;
+            vals[i] |= q << k;
+        }
+        return bytes;
+    }
 };
 
 
@@ -126,14 +172,19 @@ constexpr static u8* f(u32 k, u32 *__restrict vals, u8 *__restrict bytes) { \
         case 14: return rice<14>::f(vals, bytes);                           \
         case 15: return rice<15>::f(vals, bytes);                           \
         case 16: return rice<16>::f(vals, bytes);                           \
-        default: __builtin_unreachable();                                   \
+        case 17: return rice<17>::f(vals, bytes);                           \
     }                                                                       \
+    __builtin_unreachable();                                                \
+ /* fprintf(stderr, "BUG!!!  %s(k=%u) > 17 \n\n", #f, k); */                \
+ /* return bytes; */                                                        \
 }
 
 dispatch(enc_binary)
 dispatch(dec_binary)
 dispatch(enc_unary)
 dispatch(dec_unary)
+dispatch(enc_unary_rev)
+dispatch(dec_unary_rev)
 
 
 
@@ -141,14 +192,18 @@ dispatch(dec_unary)
 // [k] [rice-binary] [rice-unary]
 // the rice param k maxes out at 16, and higher values can be used as sentinels
 u8* Shrub::encode(u8 *bytes) {
+    // puts("encoding");
     u32 total = 0;
     for (auto c : counts)
         total += c;
 
+    // if (total > erans_maxsize)
+    //     fprintf(stderr, "BUG!!!!  total=%u > erans_maxsize=%u\n", total, erans_maxsize);
+
     // optimal k is floor(log2(avg)) but this is simple enough
     u32 k = 0;
     u32 best_bits = total; // k = 0  ==  everything in unary
-    for (u32 candidate = std::max(0, std::bit_width(total)-8); candidate > 0; candidate++) {
+    for (u32 candidate = std::max(1, std::bit_width(total)-8); candidate > 0; candidate--) {
         u32 bits = 256 * candidate;
         for (auto c : counts)
             bits += c >> candidate;
@@ -158,6 +213,7 @@ u8* Shrub::encode(u8 *bytes) {
         }
         else break; // at the 2nd iteration at most, i think?
     }
+    // fprintf(stderr, "debug: we chose k=%u\n\n", k);
 
     *bytes++ = k;
     bytes = enc_binary(k, counts, bytes);
@@ -188,6 +244,64 @@ u8* Shrub::decode(u8 *bytes) {
 
 
 
+//   [---unary---] [---binary---] [k]
+//      variable     32*k bytes    1
+// the decoder reads k from the last byte to know the binary section width,
+// then dec_unary_rev finds where unary starts (= where rANS ended).
+u8* Shrub::encode_rev(u8 *end) {
+    // puts("encoding in reverse");
+    u32 total = 0;
+    for (auto c : counts)
+        total += c;
+
+    // if (total > erans_maxsize)
+    //     fprintf(stderr, "BUG!!!!  total=%u > erans_maxsize=%u\n", total, erans_maxsize);
+
+    u32 k = 0;
+    u32 best_bits = total;
+    for (u32 candidate = std::max(1, std::bit_width(total)-8); candidate > 0; candidate--) {
+        u32 bits = 256 * candidate;
+        for (auto c : counts)
+            bits += c >> candidate;
+        if (bits < best_bits) {
+            best_bits = bits;
+            k = candidate;
+        }
+        else break;
+    }
+    // fprintf(stderr, "debug: we chose k=%u\n\n", k);
+
+    *--end = u8(k);
+    end -= 32 * k;
+    enc_binary(k, counts, end);          // forward, fills [end, end + 32*k)
+    end = enc_unary_rev(k, counts, end); // backward, returns new start
+    return end;
+}
+
+u8* Shrub::decode_rev(u8 *end) {
+    u32 k = *--end;
+    end -= 32 * k;
+    dec_binary(k, counts, end);          // forward, reads 32*k bytes from end
+    end = dec_unary_rev(k, counts, end); // backward, returns start of unary
+
+    u32 c = 0;
+    for (u32 g = 0; g < 16; g++) {
+        top[g] = c;
+        u32 g_cum = 0;
+        for (u32 l = 0; l < 16; l++) {
+            u8 s = (g << 4) | l;
+            bottom[g][l] = g_cum;
+            g_cum += counts[s];
+        }
+        c += g_cum;
+    }
+    return end;
+}
+
+
+
+#if RUNTIME_TESTS || COMPTIME_TESTS
+
 #if RUNTIME_TESTS
 #include <cstdio>
 #define LOG(...) printf(__VA_ARGS__)
@@ -200,7 +314,7 @@ u8* Shrub::decode(u8 *bytes) {
 constexpr
 #endif
 static bool check_rice() {
-    constexpr auto max = 24*1024*1024;
+    constexpr u32 max = 24*1024*1024;
 
     u32 vals[256]{};
     u32 decoded[256]{};
@@ -252,7 +366,7 @@ static bool check_rice() {
         return true;
     };
 
-    for (u32 k = 0; k <= 16; k++) {
+    for (u32 k = 0; k <= 17; k++) {
         LOG("check k=%u\n", k);
         if (!test_k(k)) return false;
     }
@@ -265,4 +379,5 @@ static bool check_rice() {
 static_assert(check_rice());
 #elif RUNTIME_TESTS
 int main() { check_rice(); }
+#endif
 #endif
