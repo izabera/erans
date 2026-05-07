@@ -4,10 +4,12 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/mman.h>
+// #include <cstdio>
 
 lemire::lemire(u32 max, const char *cache) {
     size_t len = max * sizeof(u64) + 4096;
     auto last = len / sizeof(u64);
+    // fprintf(stderr, "lemire max=%u last=%zu    \n", max, last);
 
     int flags = MAP_PRIVATE|MAP_ANONYMOUS;
     int fd = open(cache, O_RDWR|O_CREAT, 0644);

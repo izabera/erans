@@ -40,7 +40,16 @@ void erans_encode(std::string_view in, std::string& out) {
             state >>= 8;
         }
 
-        state = (state / f) * M + (state % f) + c;
+        auto [d, m] = f > 1 ? l.divmod(state, f) : lemire::dm{u32(state/f), u32(state%f)};
+        // if (d != state/f) {
+        //     fprintf(stderr, "BUG!!!! %u/%u=%u  (N = %zu)\n", u32(state), f, m, N);
+        //     exit(1);
+        // }
+        // if (m != state%f) {
+        //     fprintf(stderr, "BUG!!!! %u%%%u=%u\n", u32(state), f, d);
+        //     exit(1);
+        // }
+        state = d * M + m + c;
     }
 
     // flush state byte by byte; the decoder pulls them back from the tail
@@ -63,6 +72,7 @@ void erans_encode(std::string_view in, std::string& out) {
 }
 
 void erans_decode(std::string_view in, std::string& out) {
+    lemire l;
     Shrub shrub;
 
     auto base   = reinterpret_cast<u8*>(const_cast<char*>(in.data()));
@@ -78,17 +88,38 @@ void erans_decode(std::string_view in, std::string& out) {
 
     auto tail = rans_end;
 
-    u64 state = 0;
-    for (u64 M = total; M >= 1; M--) {
+    u64 state = 0, M = total;
+
+    // loop down to M == 2
+    for (; M > 1; M--) {
         while (state < M && tail > base)
             state = (state << 8) | *--tail;
 
-        u32 slot = state % M;
+        auto [q, slot] = l.divmod(state, M);
+        // if (q != state/M) {
+        //     fprintf(stderr, "BUG!!!! %u/%u=%u total=%u\n", u32(state), u32(M), q, total);
+        //     exit(1);
+        // }
+        // if (slot != state%M) {
+        //     fprintf(stderr, "BUG!!!! %u%%%u=%u total=%u\n", u32(state), u32(M), slot, total);
+        //     exit(1);
+        // }
         Shrub::cf cf;
         u8 s = shrub.cdf2sym(slot, cf);
         shrub.dec(s);
 
-        state = (state / M) * cf.f + (slot - cf.c);
+        state = q * cf.f + (slot - cf.c);
         out[total - M] = char(s);
     }
+
+    while (state < M && tail > base)
+        state = (state << 8) | *--tail;
+
+    u32 q = state, slot = 0;
+    Shrub::cf cf;
+    u8 s = shrub.cdf2sym(slot, cf);
+    shrub.dec(s);
+
+    state = q * cf.f + (slot - cf.c);
+    out[total - M] = char(s);
 }

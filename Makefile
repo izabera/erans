@@ -20,6 +20,7 @@ endif
 cli: shrub.o erans.o cli.o lemire.o utils.o
 
 roundtrip: cli enwik8 enwik9
+	rm -f enwik*.erans*
 	perf stat ./cli encode enwik8 enwik8.erans
 	perf stat ./cli encode enwik9 enwik9.erans
 	perf stat ./cli decode enwik8.erans enwik8.erans.decoded
@@ -27,6 +28,7 @@ roundtrip: cli enwik8 enwik9
 	cmp enwik8 enwik8.erans.decoded
 	cmp enwik8 enwik8.erans.decoded
 	wc -c enwik*
+	echo roundtrip ok
 
 .PHONY: roundtrip
 
