@@ -22,15 +22,27 @@ endif
 
 cli: shrub.o erans.o cli.o lemire.o utils.o
 
-roundtrip: cli enwik8 enwik9
-	rm -f enwik*.erans*
-	perf stat ./cli encode enwik8 enwik8.erans
-	perf stat ./cli encode enwik9 enwik9.erans
-	perf stat ./cli decode enwik8.erans enwik8.erans.decoded
-	perf stat ./cli decode enwik9.erans enwik9.erans.decoded
-	cmp enwik8 enwik8.erans.decoded
-	cmp enwik8 enwik8.erans.decoded
-	wc -c enwik*
+cli.o: cli.cpp erans.hpp utils.hpp types.hpp
+erans.o: erans.cpp erans.hpp lemire.hpp shrub.hpp types.hpp
+shrub.o: shrub.cpp shrub.hpp erans.hpp types.hpp
+lemire.o: lemire.cpp lemire.hpp types.hpp utils.hpp
+utils.o: utils.cpp utils.hpp
+
+TMPDIR = /dev/shm
+DIR = dir=$$(pwd); cd $(TMPDIR);
+
+$(TMPDIR)/enwik%: enwik%
+	cp $< $@
+
+roundtrip: cli $(TMPDIR)/enwik8 $(TMPDIR)/enwik9
+	$(DIR) rm -f enwik*.erans*
+	$(DIR) perf stat $$dir/cli encode enwik8 enwik8.erans
+	$(DIR) perf stat $$dir/cli encode enwik9 enwik9.erans
+	$(DIR) perf stat $$dir/cli decode enwik8.erans enwik8.erans.decoded
+	$(DIR) perf stat $$dir/cli decode enwik9.erans enwik9.erans.decoded
+	$(DIR) cmp enwik8 enwik8.erans.decoded
+	$(DIR) cmp enwik8 enwik8.erans.decoded
+	$(DIR) wc -c enwik*
 	echo roundtrip ok
 
 .PHONY: roundtrip
