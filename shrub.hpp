@@ -56,13 +56,16 @@ struct Shrub {
         u32 mask_g = cmp_le_mask(top, v_top);
         u32 group = 31 - __builtin_clz(mask_g);
 
-        u32 remainder = target - top[group];
+        // auto top_c = top[group];
+        // it doesn't make sense to me but this is faster
+        auto top_c = reinterpret_cast<const u32_a*>(&top)[group];
+        u32 remainder = target - top_c;
         auto v_bottom = simd<u32,16>::set1(remainder);
         u32 mask_l = cmp_le_mask(bottom[group], v_bottom);
         u32 lane = 31 - __builtin_clz(mask_l);
 
         u8 s = (group << 4) | lane;
-        cf.c = top[group] + reinterpret_cast<const u32_a*>(bottom)[s];
+        cf.c = top_c + reinterpret_cast<const u32_a*>(bottom)[s];
         cf.f = counts[s];
         return s;
     }
