@@ -1,4 +1,5 @@
 #include "erans.hpp"
+#include "utils.hpp"
 #include "types.hpp"
 #include <cstdio>
 #include <chrono>
@@ -10,11 +11,6 @@ int main(int argc, char **argv) {
                  "    erans-cli decode [infile [outfile]]\n"
                //"    erans-cli info   [file]\n"
                  ;
-
-    auto error = [](const char *msg) {
-        fprintf(stderr, "%s\n", msg);
-        exit(1);
-    };
 
     if (argc < 2)
         error(usage);

@@ -7,6 +7,8 @@ using i16 = int16_t; using u16 = uint16_t; using f16 = _Float16; using bf16 = __
 using i32 = int32_t; using u32 = uint32_t; using f32 = _Float32;
 using i64 = int64_t; using u64 = uint64_t; using f64 = _Float64;
 
+using i128 = __int128_t; using u128 = __uint128_t;
+
 template <typename t, int n>
 struct simd {
     using unaligned __attribute__((vector_size(sizeof(t)*n),aligned(1)))           = t;

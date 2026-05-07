@@ -4,7 +4,9 @@ TARGET = native
 
 CXX = clang++
 MCAFLAGS = -mcpu=$(TARGET)
-CXXFLAGS = -march=$(TARGET) -std=c++23 -O3 -ffast-math -Wall -Wextra -Wno-psabi -ggdb3
+CXXFLAGS = -march=$(TARGET) -std=c++23 -O3 -ffast-math -Wall -Wextra -Wno-psabi -ggdb3 -flto
+LDFLAGS = -flto -static
+LINK.o = $(CXX) -fuse-ld=lld $(LDFLAGS) $(TARGET_ARCH)
 
 # add a horrible probe because clang is a bit too conservative sometimes
 ZMM_PROBE = $(shell echo 'void f(i32x16 &p){p+=p;}' | \
@@ -15,7 +17,18 @@ ifeq ($(call ZMM_PROBE,),0)
   endif
 endif
 
-cli: shrub.o erans.o
+cli: shrub.o erans.o cli.o lemire.o utils.o
+
+roundtrip: cli enwik8 enwik9
+	perf stat ./cli encode enwik8 enwik8.erans
+	perf stat ./cli encode enwik9 enwik9.erans
+	perf stat ./cli decode enwik8.erans enwik8.erans.decoded
+	perf stat ./cli decode enwik9.erans enwik9.erans.decoded
+	cmp enwik8 enwik8.erans.decoded
+	cmp enwik8 enwik8.erans.decoded
+	wc -c enwik*
+
+.PHONY: roundtrip
 
 mca: vec.s
 	llvm-mca $(MCAFLAGS) $< | awk -f mca.awk
@@ -40,5 +53,5 @@ enwik%: enwik%.zip
 	wget https://www.mattmahoney.net/dc/$@
 
 clean:
-	rm -rf *.[os] *.mca
+	rm -rf *.[os] *.mca cli
 .PHONY: clean

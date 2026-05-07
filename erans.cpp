@@ -1,4 +1,5 @@
 #include "erans.hpp"
+#include "lemire.hpp"
 #include "shrub.hpp"
 #include "types.hpp"
 #include <cstring>
@@ -11,7 +12,9 @@
 // where it starts -- that's also where rANS ends.
 
 void erans_encode(std::string_view in, std::string& out) {
+    lemire l;
     Shrub shrub;
+
     u64 state = 1;
     auto N = in.size();
 
