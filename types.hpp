@@ -57,17 +57,15 @@ static inline u32 cmp_le_mask(V a, V b) {
 #if defined(__AVX512F__)
     return _mm512_cmple_epu32_mask((__m512i)a, (__m512i)b);
 #elif defined(__AVX2__)
-    // The current callers compare CDF values bounded well below INT32_MAX;
-    // signed compare avoids clang's slower unsigned min/eq lowering on AVX2.
-    using u32x8_a __attribute__((may_alias)) = u32x8;
-    auto a_lo = (__m256i)((const u32x8_a*)&a)[0];
-    auto a_hi = (__m256i)((const u32x8_a*)&a)[1];
-    auto b_lo = (__m256i)((const u32x8_a*)&b)[0];
-    auto b_hi = (__m256i)((const u32x8_a*)&b)[1];
-    auto gt_lo = _mm256_cmpgt_epi32(a_lo, b_lo);
-    auto gt_hi = _mm256_cmpgt_epi32(a_hi, b_hi);
-    u32 m_lo = ~u32(_mm256_movemask_ps(_mm256_castsi256_ps(gt_lo))) & 0xff;
-    u32 m_hi = ~u32(_mm256_movemask_ps(_mm256_castsi256_ps(gt_hi))) & 0xff;
+    using i32x8_a __attribute__((may_alias)) = i32x8;
+    auto a_lo = ((const i32x8_a*)&a)[0];
+    auto a_hi = ((const i32x8_a*)&a)[1];
+    auto b_lo = ((const i32x8_a*)&b)[0];
+    auto b_hi = ((const i32x8_a*)&b)[1];
+    auto le_lo = a_lo <= b_lo;
+    auto le_hi = a_hi <= b_hi;
+    u32 m_lo = _mm256_movemask_ps((__m256)le_lo);
+    u32 m_hi = _mm256_movemask_ps((__m256)le_hi);
     return m_lo | (m_hi << 8);
 #else
     u32 mask = 0;

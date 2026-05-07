@@ -37,11 +37,11 @@ $(TMPDIR)/enwik%: enwik%
 roundtrip: cli $(TMPDIR)/enwik8 $(TMPDIR)/enwik9
 	$(DIR) rm -f enwik*.erans*
 	$(DIR) perf stat $$dir/cli encode enwik8 enwik8.erans
-	$(DIR) perf stat $$dir/cli encode enwik9 enwik9.erans
 	$(DIR) perf stat $$dir/cli decode enwik8.erans enwik8.erans.decoded
+	$(DIR) perf stat $$dir/cli encode enwik9 enwik9.erans
 	$(DIR) perf stat $$dir/cli decode enwik9.erans enwik9.erans.decoded
 	$(DIR) cmp enwik8 enwik8.erans.decoded
-	$(DIR) cmp enwik8 enwik8.erans.decoded
+	$(DIR) cmp enwik9 enwik9.erans.decoded
 	$(DIR) wc -c enwik*
 	echo roundtrip ok
 
