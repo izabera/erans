@@ -104,7 +104,6 @@ struct Shrub {
         auto cmp_bottom = bottom[group] <= v_bottom;
         u32 lane = 31 - __builtin_clz(to_mask(cmp_bottom));
 #endif
-
         u8 s = (group << 4) | lane;
         cf.c = top_c + reinterpret_cast<const u32_a*>(bottom)[s];
         cf.f = counts[s]--;

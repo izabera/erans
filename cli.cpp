@@ -42,8 +42,10 @@ int main(int argc, char **argv) {
         auto s = (t1-t0).count()/1e9;
         raw_total += raw_count;
         enc_total += enc_count;
-        fprintf(stderr, "raw=%.2f MiB/s   enc=%.2f MiB/s    \r",
-                (raw_total/1e6) / s, (enc_total/1e6) / s);
+        fprintf(stderr, "\r%s: raw=%7.2fMB - %6.2fMB/s   enc=%7.2fMB - %6.2f MB/s   ",
+                mode.data(),
+                raw_total/1e6, (raw_total/1e6) / s,
+                enc_total/1e6, (enc_total/1e6) / s);
     };
 
     if (mode == "encode") {
@@ -71,5 +73,8 @@ int main(int argc, char **argv) {
             progress();
         }
     }
-    fprintf(stderr, "\n");
+
+    auto t1 = std::chrono::steady_clock::now();
+    auto s = (t1-t0).count()/1e9;
+    fprintf(stderr, "total=%6.2fs\n", s);
 }

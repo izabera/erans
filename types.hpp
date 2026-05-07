@@ -56,8 +56,8 @@ Simd(64)
 #undef XAll
 #undef Simd
 
-template <typename V>
-static inline u32 cmp_le_mask(V a, V b) {
+__attribute__((always_inline))
+static inline u32 cmp_le_mask(u32x16 a, u32x16 b) {
 #if defined(__AVX512F__)
     return _mm512_cmple_epu32_mask((__m512i)a, (__m512i)b);
 #elif defined(__AVX2__)
@@ -80,8 +80,8 @@ static inline u32 cmp_le_mask(V a, V b) {
 #endif
 }
 
-template <typename V>
-static inline u32 to_mask(V a) {
+__attribute__((always_inline))
+static inline u32 to_mask(i32x16 a) {
 #if defined(__AVX512F__)
     return _mm512_test_epi32_mask((__m512i)a, (__m512i)a);
 #elif defined(__AVX2__)
