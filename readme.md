@@ -1,6 +1,25 @@
 enumerative rANS
 ================
 
+tldr:
+-----
+
+- adaptive rANS variant
+- single pass streaming encoder
+- 256 symbols
+- nice data structures
+
+try it:
+
+```
+make cli
+make roundtrip
+```
+
+
+----------
+
+
 any sequence of N symbols from an alphabet S can be represented as:
 - a histogram of a multiset (how many times each symbol appears)
 - the permutation index of the multiset (a value up to the multinomial
@@ -9,6 +28,10 @@ any sequence of N symbols from an alphabet S can be represented as:
 enumerative rANS is an efficient practical implementation of a rANS variant
 that encodes the exact histogram and the permutation index, for a 256 symbol
 alphabet (bytes), and a reasonable max block size of 2^24 symbols (16MiB).
+(this is purely a limitation of this implementation: there is no size limit in
+the algorithm itself).
+
+the encoder is single pass, and fully streamable.
 
 it achieves the [optimal bound of enumerative coding][cover], conditional for a
 prescribed histogram: the compressed size approaches the log of the multinomial
@@ -146,10 +169,10 @@ counts directly in one pass:
 def erans_encode(data):
     counts = [0] * 256
     state = 1
-    for M, s in enumerate(reversed(data), 1):   # M starting at 1
-        counts[s] += 1        # <--- increment first!  important!
-                              # the encoder must use the same suffix counts the
-                              # decoder will reconstruct from total - prefix
+    for M, s in enumerate(data, 1): # M starting at 1
+        counts[s] += 1              # <--- increment first!  important!
+                                    # the encoder must use the same prefix counts the
+                                    # decoder will see when it walks back from the end
         c = sum(counts[:s])
         f = counts[s]
         state = (state // f) * M + (state % f) + c
@@ -160,37 +183,36 @@ this is the bignum form: state grows without bound as we encode.  the streaming
 version that emits bytes as we go is described below; the renorm range needs to
 shift with M because, unlike standard rANS, M changes every step.
 
-the backward traversal accumulates suffix counts, i.e. counts of symbols from
-the current position to the end.
+the encoder reads forward and accumulates prefix counts, i.e. counts of symbols
+from the start up to and including the current position.  this means encoding
+is a single forward pass over the input, it never needs to seek back.
 
 the decoder receives the final counts, and reconstructs the bytes from the cdf.
+it then walks from the end of the stream back to the start, in lifo fashion: at
+the first decoding step it produces the last input symbol.
 
-note: the encoder processes position i and needs the suffix counts from [i, N),
-including symbol s at position i itself.  the decoder will need to derive the
-same suffix counts from the total, so the count in the encoder must be bumped
-before computing c and f.
+note: the encoder processes position i and needs the prefix counts including
+symbol s at position i itself.  the decoder, walking backward, sees those same
+counts before it dec's the symbol off, so the count in the encoder must be
+bumped before computing c and f.
 
 ```
 def erans_decode(state, length, total):
-    prefix = [0] * 256
-    out = []
-    for _ in range(length):
-        # reconstruct suffix counts
-        suffix = [total[i] - prefix[i] for i in range(256)]
-        M = sum(suffix)
-
+    counts = list(total)
+    out = [None] * length
+    for M in range(length, 0, -1):
         slot = state % M
         acc = 0
         for s in range(256):
-            if acc + suffix[s] > slot:
+            if acc + counts[s] > slot:
                 c = acc
-                f = suffix[s]
+                f = counts[s]
                 break
-            acc += suffix[s]
+            acc += counts[s]
 
         state = (state // M) * f + slot - c
-        out.append(s)
-        prefix[s] += 1
+        out[M - 1] = s   # decoder emits last symbol first
+        counts[s] -= 1
     return out
 ```
 
@@ -213,8 +235,8 @@ out while state >= 256*f handles the upper bound.  the lower bound is automatic
 when f <= M-1, since state >= M-1 >= f.
 
 the one boundary is f = M (all symbols seen so far are this one).  this can
-only happen during a contiguous prefix of the encoder pass (a contiguous suffix
-of the data) and during that prefix:
+only happen during a contiguous prefix of the encoder pass (which, since the
+encoder reads forward, is also a contiguous prefix of the data) and during it:
 
   - c = 0 (only one symbol exists in the shrub)
   - state stays at 1, since (1 // M) * M + (1 % M) + 0 = 1
@@ -228,7 +250,7 @@ def erans_encode_streaming(data):
     state = 1
     encoded = []
 
-    for M, s in enumerate(reversed(data), 1):
+    for M, s in enumerate(data, 1):
         shrub.inc(s)
         c, f = shrub.sym2cdf(s)
 
@@ -246,6 +268,11 @@ def erans_encode_streaming(data):
     return shrub, encoded
 ```
 
+note that this is fully streamable: input is read forward symbol-by-symbol,
+output bytes come out as we go, and we don't need to know the length up front.
+the only thing the encoder can't emit until the end is the histogram itself,
+which is naturally appended as a trailer.
+
 no length prefix is needed for the flush.  the encoder's final state is in
 [M_final, 256*M_final), so when the decoder pulls bytes until state >= M_final,
 that pull stops at exactly the encoder's final state.
@@ -256,9 +283,10 @@ appending, so the decoder must pop from the tail (LIFO).
 ```
 def erans_decode_streaming(shrub, encoded):
     state = 0
-    out = []
+    N = shrub.total()
+    out = [None] * N
 
-    for M in range(shrub.total(),0,-1):
+    for M in range(N, 0, -1):
         # pull bytes (LIFO) to keep state >= M
         # on the first iteration this also reconstructs the flushed final state from the tail
         while state < M and encoded:
@@ -269,7 +297,9 @@ def erans_decode_streaming(shrub, encoded):
         shrub.dec(s)
 
         state = (state // M) * f + (slot - c)
-        out.append(s)
+        # decoder walks the input backward: first iteration recovers the last
+        # input symbol, last iteration the first
+        out[M - 1] = s
 
     return out
 ```

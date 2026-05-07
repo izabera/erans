@@ -28,7 +28,7 @@ void erans_encode(std::string_view in, std::string& out) {
     auto p = base;
 
     for (u64 M = 1; M <= N; M++) {
-        u8 s = u8(in[N - M]);
+        u8 s = u8(in[M - 1]);
         shrub.inc(s);
         auto [c, f] = shrub.sym2cdf(s);
 
@@ -121,7 +121,7 @@ void erans_decode(std::string_view in, std::string& out) {
         shrub.dec(s);
 
         state = q * cf.f + (slot - cf.c);
-        out[total - M] = char(s);
+        out[M - 1] = char(s);
     }
 
     while (state < M && tail > base)
@@ -133,5 +133,5 @@ void erans_decode(std::string_view in, std::string& out) {
     shrub.dec(s);
 
     state = q * cf.f + (slot - cf.c);
-    out[total - M] = char(s);
+    out[M - 1] = char(s);
 }

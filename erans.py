@@ -30,7 +30,7 @@ def erans_encode(data):
     shrub = Shrub()
     state = 1
 
-    for M, s in enumerate(reversed(data), 1): # M starting at 1
+    for M, s in enumerate(data, 1):           # M starting at 1
         shrub.inc(s)                          # increment first so count[s] > 0
         c, f = shrub.sym2cdf(s)               # use new counts
         state = (state // f) * M + (state % f) + c
@@ -38,14 +38,17 @@ def erans_encode(data):
     return state, shrub
 
 def erans_decode(state, shrub):
-    out = []
-    for M in reversed(range(1, shrub.total()+1)): # M from length to 1
+    # rANS is LIFO: the last symbol pushed is the first popped, so the decoder
+    # produces symbols from the end of the stream toward the start
+    N = shrub.total()
+    out = [None] * N
+    for M in reversed(range(1, N+1)):             # M from length to 1
         slot = state % M
         c, f, s = shrub.cdf2sym(slot)             # deduce with current counts
         shrub.dec(s)                              # then decrement
         state = (state // M) * f + slot - c
         # print(f"decoding: {state=} {slot=} {c=} {f=} {M=} {shrub=} {out=}")
-        out.append(s)
+        out[M - 1] = s
     return ''.join(out)
 
 def erans_encode_streaming(data):
@@ -53,7 +56,7 @@ def erans_encode_streaming(data):
     state = 1
     encoded = []
 
-    for M, s in enumerate(reversed(data), 1):
+    for M, s in enumerate(data, 1):
         shrub.inc(s)
         c, f = shrub.sym2cdf(s)
 
@@ -83,9 +86,10 @@ def erans_encode_streaming(data):
 
 def erans_decode_streaming(shrub, encoded):
     state = 0
-    out = []
+    N = shrub.total()
+    out = [None] * N
 
-    for M in range(shrub.total(),0,-1):
+    for M in range(N, 0, -1):
         # rans is a stack: pop bytes in reverse order of emission (LIFO)
         # on the first iteration this also reconstructs the flushed state
         while state < M and encoded:
@@ -97,7 +101,9 @@ def erans_decode_streaming(shrub, encoded):
 
         state = (state // M) * f + (slot - c)
 
-        out.append(s)
+        # decoder emits symbols from end to start: at M=N we recover the last
+        # symbol pushed (= the last input symbol), at M=1 the first
+        out[M - 1] = s
 
     return ''.join(out)
 
@@ -135,7 +141,7 @@ if __name__ == "__main__":
         ("all same short",   "a" * 10),
         ("all same long",    "x" * 10000),                       # f == M every step
         ("two symbols",      "ab" * 500),
-        ("ramp into new",    "a" * 50 + "b" * 50),               # long f==M prefix in reversed order
+        ("ramp into new",    "a" * 50 + "b" * 50),               # long f==M prefix at the start
         ("binary",           "".join(random.choice("01") for _ in range(2000))),
         ("ascii",            "".join(chr(random.randint(32, 126)) for _ in range(5000))),
         ("full byte range",  "".join(chr(random.randint(0, 255)) for _ in range(5000))),
