@@ -18,13 +18,14 @@ void erans_encode(std::string_view in, std::string& out) {
     u64 state = 1;
     auto N = in.size();
 
-    // worst-case histogram size for k capped at 16:
-    //   1 (k) + 512 (binary, 32*k) + ceil((256 + N/65536) / 8) (unary)
-    // for N = 24 MiB this is 593; round up for safety
+    // worst-case histogram size for k capped at 16
+    // 1 (k) + 512 (binary, 32*k) + ceil((256 + N/65536) / 8) (unary)
     constexpr u32 max_hist = 1 + 512 + (256 + (erans_maxsize >> 16) + 7) / 8;
 
-    out.clear();
-    out.reserve(N + max_hist + 16);
+    // pre-resize so we can just write to the raw pointer
+    out.resize(N + max_hist + 16 + 8);
+    auto base = reinterpret_cast<u8*>(out.data());
+    auto p = base;
 
     for (u64 M = 1; M <= N; M++) {
         u8 s = u8(in[N - M]);
@@ -33,34 +34,50 @@ void erans_encode(std::string_view in, std::string& out) {
 
         // post-encode invariant is state in [M, 256*M); the C step lands
         // there iff the pre-encode state is in [f, 256*f).  shift bytes
-        // out while state >= 256*f.  the lower bound is automatic since
+        // out so that state < 256*f.  the lower bound is automatic since
         // state >= M-1 >= f (the f == M case stays at state = 1 forever)
-        while (state >= (u64(f) << 8)) {
-            out.push_back(u8(state));
-            state >>= 8;
-        }
 
-        auto [d, m] = f > 1 ? l.divmod(state, f) : lemire::dm{u32(state/f), u32(state%f)};
-        // if (d != state/f) {
-        //     fprintf(stderr, "BUG!!!! %u/%u=%u  (N = %zu)\n", u32(state), f, m, N);
-        //     exit(1);
-        // }
-        // if (m != state%f) {
-        //     fprintf(stderr, "BUG!!!! %u%%%u=%u\n", u32(state), f, d);
-        //     exit(1);
-        // }
-        state = d * M + m + c;
+        // branchless:
+        // - 4 unrolled cmovs cover the worst case (f=1, state up to ~2^32)
+        // - store 8 bytes of original state at p, advance p by the number of shifts taken
+
+        // the tail bytes get overwritten by subsequent iterations or truncated at the end
+
+        u64 limit = u64(f) << 8;
+        u64 orig = state;
+
+        bool b0 = state >= limit; state = b0 ? state >> 8 : state;
+        bool b1 = state >= limit; state = b1 ? state >> 8 : state;
+        bool b2 = state >= limit; state = b2 ? state >> 8 : state;
+        bool b3 = state >= limit; state = b3 ? state >> 8 : state;
+
+        u32 n = u32(b0) + u32(b1) + u32(b2) + u32(b3);
+        std::memcpy(p, &orig, 8);
+        p += n;
+
+        u32 q, r;
+        if (f > 1) {
+            [[likely]]; // almost always
+            auto [d, m] = l.divmod(state, f);
+            q = d;
+            r = m;
+        }
+        else {
+            q = state/f;
+            r = state%f;
+        }
+        state = q * M + r + c;
     }
 
     // flush state byte by byte; the decoder pulls them back from the tail
     while (state) {
-        out.push_back(u8(state));
+        *p++ = u8(state);
         state >>= 8;
     }
 
-    // append the histogram, growing backward into worst-case-reserved space.
-    // the actual histogram may be smaller, so memmove down to compact.
-    auto rans_end = out.size();
+    // append the histogram, growing backward into worst-case-reserved space
+    // the actual histogram may be smaller, so memmove down to compact
+    auto rans_end = size_t(p - base);
     out.resize(rans_end + max_hist);
     auto end_p   = reinterpret_cast<u8*>(out.data()) + rans_end + max_hist;
     auto start_p = shrub.encode_rev(end_p);
