@@ -23,6 +23,7 @@ struct Shrub {
     // every other way to write this generates horrible code
     using u32_a __attribute__((may_alias)) = u32;
 
+    __attribute__((always_inline))
     void inc(u8 byte) {
         counts[byte]++;
 
@@ -33,6 +34,7 @@ struct Shrub {
         bottom[hi] += reinterpret_cast<const view*>(bits + 15 - lo)->val;
     }
 
+    __attribute__((always_inline))
     void dec(u8 byte) {
         counts[byte]--;
 
@@ -45,12 +47,14 @@ struct Shrub {
 
     struct cf { u32 c, f; };
 
+    __attribute__((always_inline))
     cf sym2cdf(u8 s) const {
         auto c = top[s>>4] + reinterpret_cast<const u32_a*>(bottom)[s];
         auto f = counts[s];
         return {c, f};
     }
 
+    __attribute__((always_inline))
     u8 cdf2sym(u32 target, cf& cf) const {
         auto v_top = simd<u32,16>::set1(target);
         u32 mask_g = cmp_le_mask(top, v_top);
@@ -79,6 +83,7 @@ struct Shrub {
     // a>b gives -1 in lanes (group+1)..15, exactly what dec needs to add
     // tzcnt_u16 returns 16 on zero input, so target-in-group-15 falls out for free
 
+    __attribute__((always_inline))
     u8 cdf2sym_dec(u32 target, cf& cf) {
         auto v_top = simd<u32,16>::set1(target);
 #ifdef USE_TZCNT
@@ -116,15 +121,30 @@ struct Shrub {
         return s;
     }
 
+    // likewise, in the encoder we're always doing inc -> sym2cdf
+    // fuse into one call to avoid redundant loads of counts[s] and top[hi]
+    __attribute__((always_inline))
+    cf sym2cdf_inc(u8 s) {
+        u32 hi = s >> 4;
+        u32 lo = s & 15;
+
+        u32 c = top[hi] + reinterpret_cast<const u32_a*>(bottom)[s];
+        u32 f = ++counts[s];
+
+        // there's no immediate data dependency on top or bottom[hi],
+        // so the latency of the loads doesn't matter
+        top        += reinterpret_cast<const view*>(bits + 15 - hi)->val;
+        bottom[hi] += reinterpret_cast<const view*>(bits + 15 - lo)->val;
+
+        return {c, f};
+    }
+
     // yolo
     u8* encode(u8 *bytes);
     u8* decode(u8 *bytes);
 
-    // reverse layout: [..unary..][..binary..][k].  encode_rev grows backward
-    // from `end` and returns the start of the histogram; decode_rev consumes
-    // backward from `end` and returns the start it found.
-    u8* encode_rev(u8 *end);
-    u8* decode_rev(u8 *end);
+    u8* encode_rev(u8 *end); // reverse layout: [..unary..][..binary..][k]
+    u8* decode_rev(u8 *end); // both iterate from the end and return the start
 
     void debug() const;
 };

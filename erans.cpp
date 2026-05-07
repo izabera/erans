@@ -29,8 +29,7 @@ void erans_encode(std::string_view in, std::string& out) {
 
     for (u64 M = 1; M <= N; M++) {
         u8 s = u8(in[M - 1]);
-        shrub.inc(s);
-        auto [c, f] = shrub.sym2cdf(s);
+        auto [c, f] = shrub.sym2cdf_inc(s);
 
         // post-encode invariant is state in [M, 256*M); the C step lands
         // there iff the pre-encode state is in [f, 256*f).  shift bytes
@@ -117,12 +116,7 @@ void erans_decode(std::string_view in, std::string& out) {
         //     exit(1);
         // }
         Shrub::cf cf;
-#if 0
-        u8 s = shrub.cdf2sym(slot, cf);
-        shrub.dec(s);
-#else
         u8 s = shrub.cdf2sym_dec(slot, cf);
-#endif
 
         state = q * cf.f + (slot - cf.c);
         out[M - 1] = char(s);
@@ -133,8 +127,7 @@ void erans_decode(std::string_view in, std::string& out) {
 
     u32 q = state, slot = 0;
     Shrub::cf cf;
-    u8 s = shrub.cdf2sym(slot, cf);
-    shrub.dec(s);
+    u8 s = shrub.cdf2sym_dec(slot, cf);
 
     state = q * cf.f + (slot - cf.c);
     out[M - 1] = char(s);
