@@ -7,7 +7,9 @@
 // #include <cstdio>
 
 lemire::lemire(u32 max, const char *cache) {
-    size_t len = max * sizeof(u64) + 4096;
+    // overallocates by 4kb, and rounds up to the next multiple of 2mb
+    constexpr auto huge2mb = 2 * 1024 * 1024;
+    size_t len = (max * sizeof(u64) + 4096 + huge2mb - 1) / huge2mb * huge2mb;
     auto last = len / sizeof(u64);
     // fprintf(stderr, "lemire max=%u last=%zu    \n", max, last);
 

@@ -94,7 +94,8 @@ static inline u32 to_mask(i32x16 a) {
 #else
     u32 mask = 0;
     for (int i = 0; i < 16; i++)
-        if (a[i]) mask |= (1 << i);
+        if (a[i] < 0)
+            mask |= 1 << i;
     return mask;
 #endif
 }
