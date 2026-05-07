@@ -19,6 +19,8 @@ lemire::lemire(u32 max, const char *cache) {
     auto map = mmap(0, len, PROT_READ|PROT_WRITE, flags, fd, 0);
     if (map == MAP_FAILED)
         error("could not load reciprocals");
+    madvise(map, len, MADV_SEQUENTIAL);
+    madvise(map, len, MADV_HUGEPAGE);
     if (fd != -1)
         close(fd);
     recs = static_cast<u64*>(map);

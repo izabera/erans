@@ -11,8 +11,8 @@
 // (fixed size 32*k), then walks the unary section backward to learn
 // where it starts -- that's also where rANS ends.
 
+static lemire l;
 void erans_encode(std::string_view in, std::string& out) {
-    lemire l;
     Shrub shrub;
 
     u64 state = 1;
@@ -55,16 +55,12 @@ void erans_encode(std::string_view in, std::string& out) {
         std::memcpy(p, &orig, 8);
         p += n;
 
-        u32 q, r;
+        u32 q = state, r = 0;
         if (f > 1) {
             [[likely]]; // almost always
             auto [d, m] = l.divmod(state, f);
             q = d;
             r = m;
-        }
-        else {
-            q = state/f;
-            r = state%f;
         }
         state = q * M + r + c;
     }
@@ -89,7 +85,6 @@ void erans_encode(std::string_view in, std::string& out) {
 }
 
 void erans_decode(std::string_view in, std::string& out) {
-    lemire l;
     Shrub shrub;
 
     auto base   = reinterpret_cast<u8*>(const_cast<char*>(in.data()));
