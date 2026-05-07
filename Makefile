@@ -6,7 +6,10 @@ CXX = clang++
 MCAFLAGS = -mcpu=$(TARGET)
 CXXFLAGS = -march=$(TARGET) -std=c++23 -O3 -ffast-math -Wall -Wextra -Wno-psabi -ggdb3 -flto
 LDFLAGS = -flto -static
-LINK.o = $(CXX) -fuse-ld=lld $(LDFLAGS) $(TARGET_ARCH)
+LINK.o = $(CXX) $(LDFLAGS) $(TARGET_ARCH)
+ifeq ($(findstring clang,$(CXX)),clang)
+	LDFLAGS += -fuse-ld=lld
+endif
 
 # add a horrible probe because clang is a bit too conservative sometimes
 ZMM_PROBE = $(shell echo 'void f(i32x16 &p){p+=p;}' | \
