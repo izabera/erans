@@ -117,8 +117,12 @@ void erans_decode(std::string_view in, std::string& out) {
         //     exit(1);
         // }
         Shrub::cf cf;
+#if 0
         u8 s = shrub.cdf2sym(slot, cf);
         shrub.dec(s);
+#else
+        u8 s = shrub.cdf2sym_dec(slot, cf);
+#endif
 
         state = q * cf.f + (slot - cf.c);
         out[M - 1] = char(s);
