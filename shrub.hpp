@@ -139,6 +139,15 @@ struct Shrub {
         return {c, f};
     }
 
+    // an extremely performance critical case that definitely needed to be special cased
+    u8 lastsymbol() const {
+        u32 hi = to_mask(top > 0);
+        u32 tz1 = __tzcnt_u16(hi) - 1;
+        u32 lo = to_mask(bottom[tz1] > 0);
+        u32 tz2 = __tzcnt_u16(lo) - 1;
+        return tz1 << 4 | tz2;
+    }
+
     // yolo
     u8* encode(u8 *bytes);
     u8* decode(u8 *bytes);

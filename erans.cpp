@@ -122,6 +122,7 @@ void erans_decode(std::string_view in, std::string& out) {
         out[M - 1] = char(s);
     }
 
+#if 0
     while (state < M && tail > base)
         state = (state << 8) | *--tail;
 
@@ -130,5 +131,30 @@ void erans_decode(std::string_view in, std::string& out) {
     u8 s = shrub.cdf2sym_dec(slot, cf);
 
     state = q * cf.f + (slot - cf.c);
+    // if (state != 1) {
+    //     fprintf(stderr, "BUG!!!! decoder state = %u %u%%%u=%u total=%u\n", u32(state), u32(M), slot, total);
+    //     exit(1);
+    // }
     out[M - 1] = char(s);
+#endif
+
+    // state' = state/M * f + slot - c
+    //
+    // the final iteration has a bunch of nice properties
+    // - M = 1
+    // - state' = 1
+    // - slot = 0
+    // - c = 0
+    // - f = 1
+    //
+    // 1 = state/1 * 1 + 0 - 0     =>    state = 1
+    //
+    // i.e. a stream with 1 symbol is a stream where all symbols are identical
+    // and each symbol adds 0 information
+    //
+    // so we already know the final state, and we don't need to try to refill
+    // the symbol is whatever is left in the shrub
+
+    u32 s = shrub.lastsymbol();
+    out[0] = char(s);
 }
