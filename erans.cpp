@@ -6,28 +6,28 @@
 #include <memory>
 
 // in-chunk layout:
-//   [ rANS stream 0 ] ... [ rANS stream 3 ] [ stream sizes ] [ unary ] [ binary (32*k) ] [ k (1 byte) ]
+//   [ rANS stream 0 ] ... [ rANS stream 3 ] [ stream sizes ] [ histograms ]
 //
-// the decoder reads k from the last byte, finds the binary section
-// (fixed size 32*k), then walks the unary section backward to learn
-// where it starts.  The stream sizes immediately precede the histogram.
+// Each rANS stream has its own final histogram and local M.  Histograms are
+// stored at the tail, so the decoder can peel them off in reverse order.
 
 static lemire l;
-constexpr u32 rans_streams = 4;
+constexpr u32 rans_streams = erans_stream_count;
 constexpr u32 rans_stream_mask = rans_streams - 1;
 static_assert((rans_streams & rans_stream_mask) == 0);
 
 void erans_encode(std::string_view in, std::string& out) {
-    Shrub shrub;
+    Shrub shrubs[rans_streams];
 
     u64 states[rans_streams];
-    for (u32 i = 0; i < rans_streams; i++)
-        states[i] = i ? i : rans_streams;
+    u32 totals[rans_streams]{};
+    for (auto& state : states)
+        state = 1;
     auto N = in.size();
 
-    // worst-case histogram size for k capped at 16
-    // 1 (k) + 512 (binary, 32*k) + ceil((256 + N/65536) / 8) (unary)
-    constexpr u32 max_hist = 1 + 512 + (256 + (erans_maxsize >> 16) + 7) / 8;
+    // worst-case per-stream histogram size:
+    // 1 (k) + 544 (binary, 32*17) + ceil((256 + stream_max/65536) / 8) (unary)
+    constexpr u32 max_hist = 1 + 544 + (256 + (erans_stream_maxsize >> 16) + 7) / 8;
 
     std::unique_ptr<u8[]> rans[rans_streams];
     u8* rans_pos[rans_streams];
@@ -39,8 +39,9 @@ void erans_encode(std::string_view in, std::string& out) {
 
     for (u64 M = 1; M <= N; M++) {
         u8 s = u8(in[M - 1]);
-        auto [c, f] = shrub.sym2cdf_inc(s);
         u32 stream_idx = M & rans_stream_mask;
+        auto [c, f] = shrubs[stream_idx].sym2cdf_inc(s);
+        u32 stream_M = ++totals[stream_idx];
         u64& state = states[stream_idx];
 
         // Shift bytes out so that state < 256*f.  With interleaved states,
@@ -72,7 +73,7 @@ void erans_encode(std::string_view in, std::string& out) {
             q = d;
             r = m;
         }
-        state = q * M + r + c;
+        state = q * stream_M + r + c;
     }
 
     // Flush each state to its own byte stream.  The decoder pulls bytes back
@@ -96,7 +97,7 @@ void erans_encode(std::string_view in, std::string& out) {
         rans_end += rans_size[i];
     }
 
-    out.resize(rans_end + max_hist);
+    out.resize(rans_end + rans_streams * max_hist);
     auto base = reinterpret_cast<u8*>(out.data());
     auto p = base;
     for (u32 i = 0; i < rans_streams; i++) {
@@ -109,8 +110,10 @@ void erans_encode(std::string_view in, std::string& out) {
         p += sizeof stream_size;
     }
 
-    auto end_p = base + rans_end + max_hist;
-    auto start_p = shrub.encode_rev(end_p);
+    auto end_p = base + rans_end + rans_streams * max_hist;
+    auto start_p = end_p;
+    for (u32 i = rans_streams; i-- > 0;)
+        start_p = shrubs[i].encode_rev(start_p);
     auto hist_size = u32(end_p - start_p);
     auto rans_end_ptr = base + rans_end;
     if (start_p != rans_end_ptr)
@@ -119,12 +122,14 @@ void erans_encode(std::string_view in, std::string& out) {
 }
 
 void erans_decode(std::string_view in, std::string& out) {
-    Shrub shrub;
+    Shrub shrubs[rans_streams];
 
     auto base   = reinterpret_cast<u8*>(const_cast<char*>(in.data()));
     auto in_end = base + in.size();
 
-    auto hist_start = shrub.decode_rev(in_end);
+    auto hist_start = in_end;
+    for (u32 i = rans_streams; i-- > 0;)
+        hist_start = shrubs[i].decode_rev(hist_start);
     auto sizes_p = hist_start - rans_streams * sizeof(u32);
 
     u8* stream_base[rans_streams];
@@ -138,8 +143,12 @@ void erans_decode(std::string_view in, std::string& out) {
         tails[i] = p;
     }
 
+    u32 totals[rans_streams]{};
     u32 total = 0;
-    for (auto c : shrub.counts) total += c;
+    for (u32 i = 0; i < rans_streams; i++) {
+        for (auto c : shrubs[i].counts) totals[i] += c;
+        total += totals[i];
+    }
 
     out.clear();
     out.resize(total);
@@ -147,15 +156,21 @@ void erans_decode(std::string_view in, std::string& out) {
     u64 states[rans_streams]{};
     u64 M = total;
 
-    // loop down to M == 2
-    for (; M > 1; M--) {
+    for (; M > 0; M--) {
         u32 stream_idx = M & rans_stream_mask;
+        u32 stream_M = totals[stream_idx];
+        if (stream_M == 1) {
+            out[M - 1] = char(shrubs[stream_idx].lastsymbol());
+            totals[stream_idx] = 0;
+            continue;
+        }
+
         u64& state = states[stream_idx];
         auto& tail = tails[stream_idx];
-        while (state < M && tail > stream_base[stream_idx])
+        while (state < stream_M && tail > stream_base[stream_idx])
             state = (state << 8) | *--tail;
 
-        auto [q, slot] = l.divmod(state, M);
+        auto [q, slot] = l.divmod(state, stream_M);
         // if (q != state/M) {
         //     fprintf(stderr, "BUG!!!! %u/%u=%u total=%u\n", u32(state), u32(M), q, total);
         //     exit(1);
@@ -165,9 +180,10 @@ void erans_decode(std::string_view in, std::string& out) {
         //     exit(1);
         // }
         Shrub::cf cf;
-        u8 s = shrub.cdf2sym_dec(slot, cf);
+        u8 s = shrubs[stream_idx].cdf2sym_dec(slot, cf);
 
         state = q * cf.f + (slot - cf.c);
+        totals[stream_idx] = stream_M - 1;
         out[M - 1] = char(s);
     }
 
@@ -204,6 +220,5 @@ void erans_decode(std::string_view in, std::string& out) {
     // so we already know the final state, and we don't need to try to refill
     // the symbol is whatever is left in the shrub
 
-    u32 s = shrub.lastsymbol();
-    out[0] = char(s);
+    // Each stream handles its own final symbol in the main loop.
 }
