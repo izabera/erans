@@ -4,8 +4,8 @@
 // a shrub is a 2 level tree that tracks a cdf
 
 struct Shrub {
-    u32x16 top{};        // cdf of all groups
-    u32x16 bottom[16]{}; // cdf within each group
+    i32x16 top{};        // cdf of all groups
+    i32x16 bottom[16]{}; // cdf within each group
 
     u32 counts[256]{}; // tracking all counts makes a couple of things more efficient
 
@@ -17,11 +17,11 @@ struct Shrub {
         1,1,1,1, 1,1,1,1,
     };
 
-    struct view { u32x16_u val; } __attribute__((packed,may_alias));
+    struct view { i32x16_u val; } __attribute__((packed,may_alias));
 
-    // apparently gcc and clang can't go from bottom[g][l] to ((u32_a*)bottom)[byte]
+    // apparently gcc and clang can't go from bottom[g][l] to ((i32_a*)bottom)[byte]
     // every other way to write this generates horrible code
-    using u32_a __attribute__((may_alias)) = u32;
+    using i32_a __attribute__((may_alias)) = i32;
 
     __attribute__((always_inline))
     void inc(u8 byte) {
@@ -49,9 +49,9 @@ struct Shrub {
 
     __attribute__((always_inline))
     cf sym2cdf(u8 s) const {
-        auto c = top[s>>4] + reinterpret_cast<const u32_a*>(bottom)[s];
+        auto c = top[s>>4] + reinterpret_cast<const i32_a*>(bottom)[s];
         auto f = counts[s];
-        return {c, f};
+        return {u32(c), f};
     }
 
     __attribute__((always_inline))
@@ -62,14 +62,14 @@ struct Shrub {
 
         // auto top_c = top[group];
         // it doesn't make sense to me but this is faster
-        auto top_c = reinterpret_cast<const u32_a*>(&top)[group];
+        auto top_c = reinterpret_cast<const i32_a*>(&top)[group];
         u32 remainder = target - top_c;
         auto v_bottom = simd<u32,16>::set1(remainder);
         u32 mask_l = cmp_le_mask(bottom[group], v_bottom);
         u32 lane = 31 - __builtin_clz(mask_l);
 
         u8 s = (group << 4) | lane;
-        cf.c = top_c + reinterpret_cast<const u32_a*>(bottom)[s];
+        cf.c = top_c + reinterpret_cast<const i32_a*>(bottom)[s];
         cf.f = counts[s];
         return s;
     }
@@ -85,12 +85,12 @@ struct Shrub {
 
     __attribute__((always_inline))
     u8 cdf2sym_dec(u32 target, cf& cf) {
-        auto v_top = simd<u32,16>::set1(target);
+        auto v_top = simd<i32,16>::set1(target);
 #ifdef USE_TZCNT
         auto cmp_top = top > v_top;
         u32 group = _tzcnt_u16(to_mask(cmp_top)) - 1;
 
-        u32 top_c = reinterpret_cast<const u32_a*>(&top)[group];
+        u32 top_c = reinterpret_cast<const i32_a*>(&top)[group];
         u32 remainder = target - top_c;
         top += cmp_top;
 
@@ -101,16 +101,16 @@ struct Shrub {
         auto cmp_top = top <= v_top;
         u32 group = 31 - __builtin_clz(to_mask(cmp_top));
 
-        u32 top_c = reinterpret_cast<const u32_a*>(&top)[group];
+        u32 top_c = reinterpret_cast<const i32_a*>(&top)[group];
         u32 remainder = target - top_c;
         top += ~cmp_top;
 
-        auto v_bottom = simd<u32,16>::set1(remainder);
+        auto v_bottom = simd<i32,16>::set1(remainder);
         auto cmp_bottom = bottom[group] <= v_bottom;
         u32 lane = 31 - __builtin_clz(to_mask(cmp_bottom));
 #endif
         u8 s = (group << 4) | lane;
-        cf.c = top_c + reinterpret_cast<const u32_a*>(bottom)[s];
+        cf.c = top_c + reinterpret_cast<const i32_a*>(bottom)[s];
         cf.f = counts[s]--;
 
 #ifdef USE_TZCNT
@@ -128,7 +128,7 @@ struct Shrub {
         u32 hi = s >> 4;
         u32 lo = s & 15;
 
-        u32 c = top[hi] + reinterpret_cast<const u32_a*>(bottom)[s];
+        u32 c = top[hi] + reinterpret_cast<const i32_a*>(bottom)[s];
         u32 f = ++counts[s];
 
         // there's no immediate data dependency on top or bottom[hi],

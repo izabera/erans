@@ -57,9 +57,9 @@ Simd(64)
 #undef Simd
 
 __attribute__((always_inline))
-static inline u32 cmp_le_mask(u32x16 a, u32x16 b) {
+static inline u32 cmp_le_mask(i32x16 a, i32x16 b) {
 #if defined(__AVX512F__)
-    return _mm512_cmple_epu32_mask((__m512i)a, (__m512i)b);
+    return _mm512_cmple_epi32_mask((__m512i)a, (__m512i)b);
 #elif defined(__AVX2__)
     using i32x8_a __attribute__((may_alias)) = i32x8;
     auto a_lo = ((const i32x8_a*)&a)[0];
