@@ -24,39 +24,27 @@ struct Shrub {
     // every other way to write this generates horrible code
     using i32_a __attribute__((may_alias)) = i32;
 
+    // in the encoder we're always doing inc -> sym2cdf
+    // (see older versions of this code)
+    // fuse into one call to avoid redundant loads of counts[s] and top[hi]
+    struct cf { u32 c, f; };
     __attribute__((always_inline))
-    void inc(u8 byte) {
-        counts[byte]++;
+    cf sym2cdf_inc(u8 s) {
+        u32 hi = s >> 4;
+        u32 lo = s & 15;
 
-        u32 hi = byte >> 4;
-        u32 lo = byte & 15;
+        u32 c = top[hi] + reinterpret_cast<const i32_a*>(bottom)[s];
+        u32 f = ++counts[s];
 
+        // there's no immediate data dependency on top or bottom[hi],
+        // so the latency of the loads doesn't matter
         top        += reinterpret_cast<const view*>(bits + 15 - hi)->val;
         bottom[hi] += reinterpret_cast<const view*>(bits + 15 - lo)->val;
+
+        return {c, f};
     }
 
-    __attribute__((always_inline))
-    void dec(u8 byte) {
-        counts[byte]--;
-
-        u32 hi = byte >> 4;
-        u32 lo = byte & 15;
-
-        top        -= reinterpret_cast<const view*>(bits + 15 - hi)->val;
-        bottom[hi] -= reinterpret_cast<const view*>(bits + 15 - lo)->val;
-    }
-
-    struct cf { u32 c, f; };
-
-    __attribute__((always_inline))
-    cf sym2cdf(u8 s) const {
-        auto c = top[s>>4] + reinterpret_cast<const i32_a*>(bottom)[s];
-        auto f = counts[s];
-        return {u32(c), f};
-    }
-
-    // in the decoder we're always doing cdf2sym -> dec
-    // (see older versions of this code)
+    // likewise, in the decoder we're always doing cdf2sym -> dec
     // there are a few ways to improve upon this:
     //
     // a<=b gives a vector of 0/-1 with -1 in lanes 0..group
@@ -90,24 +78,6 @@ struct Shrub {
 
         bottom[group] += cmp_bottom;
         return s;
-    }
-
-    // likewise, in the encoder we're always doing inc -> sym2cdf
-    // fuse into one call to avoid redundant loads of counts[s] and top[hi]
-    __attribute__((always_inline))
-    cf sym2cdf_inc(u8 s) {
-        u32 hi = s >> 4;
-        u32 lo = s & 15;
-
-        u32 c = top[hi] + reinterpret_cast<const i32_a*>(bottom)[s];
-        u32 f = ++counts[s];
-
-        // there's no immediate data dependency on top or bottom[hi],
-        // so the latency of the loads doesn't matter
-        top        += reinterpret_cast<const view*>(bits + 15 - hi)->val;
-        bottom[hi] += reinterpret_cast<const view*>(bits + 15 - lo)->val;
-
-        return {c, f};
     }
 
     // an extremely performance critical case that definitely needed to be special cased
