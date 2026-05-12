@@ -83,8 +83,11 @@ struct Shrub {
     // a>b gives -1 in lanes (group+1)..15, exactly what dec needs to add
     // tzcnt_u16 returns 16 on zero input, so target-in-group-15 falls out for free
 
+    // also this returns slot - c instead of c to save a load
+    // we'd recompute it in the outer loop anyway
+    struct rem_f { u32 rem, f; };
     __attribute__((always_inline))
-    u8 cdf2sym_dec(u32 target, cf& cf) {
+    u8 cdf2sym_dec(u32 target, rem_f& cf) {
         auto v_top = simd<i32,16>::set1(target);
 #ifdef USE_TZCNT
         auto cmp_top = top > v_top;
@@ -110,7 +113,8 @@ struct Shrub {
         u32 lane = 31 - __builtin_clz(to_mask(cmp_bottom));
 #endif
         u8 s = (group << 4) | lane;
-        cf.c = top_c + reinterpret_cast<const i32_a*>(bottom)[s];
+        u32 bottom_c = reinterpret_cast<const i32_a*>(&bottom)[s];
+        cf.rem = remainder - bottom_c;
         cf.f = counts[s]--;
 
 #ifdef USE_TZCNT

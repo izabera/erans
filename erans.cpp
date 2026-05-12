@@ -115,10 +115,10 @@ void erans_decode(std::string_view in, std::string& out) {
         //     fprintf(stderr, "BUG!!!! %u%%%u=%u total=%u\n", u32(state), u32(M), slot, total);
         //     exit(1);
         // }
-        Shrub::cf cf;
+        Shrub::rem_f cf;
         u8 s = shrub.cdf2sym_dec(slot, cf);
 
-        state = q * cf.f + (slot - cf.c);
+        state = q * cf.f + cf.rem;
         out[M - 1] = char(s);
     }
 
