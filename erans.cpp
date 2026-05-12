@@ -104,25 +104,55 @@ void erans_state::decode_to(std::span<u8> out) {
 
     u64 state = 0, M = out.size();
 
-    // this loop does the same thing as the one after it, but it refills up to 4 bytes at a time
-    // which is enough because the encoder only emits up to 4 bytes at a time
-    for (; M > 1 && tail - base >= 4; M--) {
-        // this looks stupid but it's probably the fastest way to do it
-        if (state >= M) goto refilled; state = (state << 8) | *--tail;
-        if (state >= M) goto refilled; state = (state << 8) | *--tail;
-        if (state >= M) goto refilled; state = (state << 8) | *--tail;
-        if (state >= M) goto refilled; state = (state << 8) | *--tail;
-refilled:
-
-        auto [q, slot] = l.divmod(state, M);
+#if 0
+    // simplified decoder for illustration purposes
+    for (; M >= 1; M--) {
+        while (state < M && tail > base)
+            state = (state << 8) | *--tail;
+        auto slot = state % M;
         Shrub::rem_f cf;
         u8 s = shrub.cdf2sym_dec(slot, cf);
-
-        state = q * cf.f + cf.rem;
-        out[M - 1] = s;
+        state = state/M * cf.f + cf.rem;
+        out[M-1] = s;
     }
+#endif
 
-    // loop down to M == 2
+    // what follows is equivalent to the code above, but a little faster
+
+    // by relying the fact that the encoder grows the state by at most M, we can
+    // deduce the maximum number of bytes it can emit at any point
+
+    // except for the first refill, which reads the encoder's final state flush,
+    // not a per-symbol renorm emission
+    // do this one generically before using the tighter per-M bounds below
+    while (state < M && tail > base)
+        state = (state << 8) | *--tail;
+
+    auto loop = [&]<u64 min_M, u32 max_bytes> {
+        for (; M >= min_M && tail - base >= max_bytes; M--) {
+            if constexpr (max_bytes >= 4) { if (state >= M) goto refilled; state = (state << 8) | *--tail; }
+            if constexpr (max_bytes >= 3) { if (state >= M) goto refilled; state = (state << 8) | *--tail; }
+            if constexpr (max_bytes >= 2) { if (state >= M) goto refilled; state = (state << 8) | *--tail; }
+            if constexpr (max_bytes >= 1) { if (state >= M) goto refilled; state = (state << 8) | *--tail; }
+    refilled:
+
+            auto [q, slot] = l.divmod(state, M);
+            Shrub::rem_f cf;
+            u8 s = shrub.cdf2sym_dec(slot, cf);
+
+            state = q * cf.f + cf.rem;
+            out[M - 1] = s;
+        }
+    };
+
+    loop.operator()<16777218, 4>();
+    loop.operator()<65538, 3>();
+    loop.operator()<258, 2>();
+    loop.operator()<3, 1>();
+
+    // once the byte stream is exhausted there may still be enough state to decode more symbols
+    // the specialized loops above are guarded by the number of bytes available
+    // so the generic form finishes the job
     for (; M > 1; M--) {
         while (state < M && tail > base)
             state = (state << 8) | *--tail;
