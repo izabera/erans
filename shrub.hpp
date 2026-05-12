@@ -54,27 +54,8 @@ struct Shrub {
         return {u32(c), f};
     }
 
-    __attribute__((always_inline))
-    u8 cdf2sym(u32 target, cf& cf) const {
-        auto v_top = simd<u32,16>::set1(target);
-        u32 mask_g = cmp_le_mask(top, v_top);
-        u32 group = 31 - __builtin_clz(mask_g);
-
-        // auto top_c = top[group];
-        // it doesn't make sense to me but this is faster
-        auto top_c = reinterpret_cast<const i32_a*>(&top)[group];
-        u32 remainder = target - top_c;
-        auto v_bottom = simd<u32,16>::set1(remainder);
-        u32 mask_l = cmp_le_mask(bottom[group], v_bottom);
-        u32 lane = 31 - __builtin_clz(mask_l);
-
-        u8 s = (group << 4) | lane;
-        cf.c = top_c + reinterpret_cast<const i32_a*>(bottom)[s];
-        cf.f = counts[s];
-        return s;
-    }
-
     // in the decoder we're always doing cdf2sym -> dec
+    // (see older versions of this code)
     // there are a few ways to improve upon this:
     //
     // a<=b gives a vector of 0/-1 with -1 in lanes 0..group
@@ -82,46 +63,31 @@ struct Shrub {
     //
     // a>b gives -1 in lanes (group+1)..15, exactly what dec needs to add
     // tzcnt_u16 returns 16 on zero input, so target-in-group-15 falls out for free
+    //
+    // but clang avoids emitting tzctnw (it's a partial register stall)
+    // instead it emits tzcnt(foo|0x10000)-1
+    // either way this is slower than the alternative
 
     // also this returns slot - c instead of c to save a load
     // we'd recompute it in the outer loop anyway
     struct rem_f { u32 rem, f; };
     __attribute__((always_inline))
-    u8 cdf2sym_dec(u32 target, rem_f& cf) {
-        auto v_top = simd<i32,16>::set1(target);
-#ifdef USE_TZCNT
-        auto cmp_top = top > v_top;
-        u32 group = _tzcnt_u16(to_mask(cmp_top)) - 1;
-
-        u32 top_c = reinterpret_cast<const i32_a*>(&top)[group];
-        u32 remainder = target - top_c;
-        top += cmp_top;
-
-        auto v_bottom = simd<u32,16>::set1(remainder);
-        auto cmp_bottom = bottom[group] > v_bottom;
-        u32 lane = _tzcnt_u16(to_mask(cmp_bottom)) - 1;
-#else
-        auto cmp_top = top <= v_top;
+    u8 cdf2sym_dec(i32 target, rem_f& cf) {
+        auto cmp_top = top <= target;
         u32 group = 31 - __builtin_clz(to_mask(cmp_top));
 
         u32 top_c = reinterpret_cast<const i32_a*>(&top)[group];
-        u32 remainder = target - top_c;
+        i32 remainder = target - top_c;
         top += ~cmp_top;
 
-        auto v_bottom = simd<i32,16>::set1(remainder);
-        auto cmp_bottom = bottom[group] <= v_bottom;
+        auto cmp_bottom = bottom[group] <= remainder;
         u32 lane = 31 - __builtin_clz(to_mask(cmp_bottom));
-#endif
         u8 s = (group << 4) | lane;
         u32 bottom_c = reinterpret_cast<const i32_a*>(&bottom)[s];
         cf.rem = remainder - bottom_c;
         cf.f = counts[s]--;
 
-#ifdef USE_TZCNT
-        bottom[group] += cmp_bottom;
-#else
         bottom[group] += ~cmp_bottom;
-#endif
         return s;
     }
 

@@ -17,24 +17,6 @@ template <typename t, int n>
 struct simd {
     using unaligned __attribute__((vector_size(sizeof(t)*n),aligned(1)))           = t;
     using   aligned __attribute__((vector_size(sizeof(t)*n),aligned(sizeof(t)*n))) = t;
-
-    constexpr static auto set1(t v) {
-        if constexpr (n ==  4) return unaligned{v,v,v,v};
-        if constexpr (n ==  8) return unaligned{v,v,v,v, v,v,v,v};
-        if constexpr (n == 16) return unaligned{v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v};
-        if constexpr (n == 32)
-            return unaligned{
-                v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v,
-                v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v,
-            };
-        if constexpr (n == 64)
-            return unaligned{
-                v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v,
-                v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v,
-                v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v,
-                v,v,v,v, v,v,v,v, v,v,v,v, v,v,v,v,
-            };
-    }
 };
 
 #define XAll(...) \
