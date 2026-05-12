@@ -74,21 +74,21 @@ struct Shrub {
     struct rem_f { u32 rem, f; };
     __attribute__((always_inline))
     u8 cdf2sym_dec(i32 target, rem_f& cf) {
-        auto cmp_top = top <= target;
-        u32 group = 31 - __builtin_clz(to_mask(cmp_top));
+        auto cmp_top = top > target;
+        u32 group = 31 - __builtin_clz(to_mask(cmp_top) ^ 0xffffu);
 
         u32 top_c = reinterpret_cast<const i32_a*>(&top)[group];
         i32 remainder = target - top_c;
-        top += ~cmp_top;
+        top += cmp_top;
 
-        auto cmp_bottom = bottom[group] <= remainder;
-        u32 lane = 31 - __builtin_clz(to_mask(cmp_bottom));
+        auto cmp_bottom = bottom[group] > remainder;
+        u32 lane = 31 - __builtin_clz(to_mask(cmp_bottom) ^ 0xffffu);
         u8 s = (group << 4) | lane;
         u32 bottom_c = reinterpret_cast<const i32_a*>(&bottom)[s];
         cf.rem = remainder - bottom_c;
         cf.f = counts[s]--;
 
-        bottom[group] += ~cmp_bottom;
+        bottom[group] += cmp_bottom;
         return s;
     }
 
