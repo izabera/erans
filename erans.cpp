@@ -104,67 +104,52 @@ void erans_state::decode_to(std::span<u8> out) {
 
     u64 state = 0, M = out.size();
 
-#if 0
-    // simplified decoder for illustration purposes
-    for (; M >= 1; M--) {
-        while (state < M && tail > base)
-            state = (state << 8) | *--tail;
-        auto slot = state % M;
-        Shrub::rem_f cf;
-        u8 s = shrub.cdf2sym_dec(slot, cf);
-        state = state/M * cf.f + cf.rem;
-        out[M-1] = s;
-    }
-#endif
+    auto pull_byte = [&] { state = (state << 8) | *--tail; };
 
-    // what follows is equivalent to the code above, but a little faster
-
-    // by relying the fact that the encoder grows the state by at most M, we can
-    // deduce the maximum number of bytes it can emit at any point
-
-    // except for the first refill, which reads the encoder's final state flush,
-    // not a per-symbol renorm emission
-    // do this one generically before using the tighter per-M bounds below
-    while (state < M && tail > base)
-        state = (state << 8) | *--tail;
-
-    auto loop = [&]<u64 min_M, u32 max_bytes> {
-        for (; M >= min_M && tail - base >= max_bytes; M--) {
-            if constexpr (max_bytes >= 4) { if (state >= M) goto refilled; state = (state << 8) | *--tail; }
-            if constexpr (max_bytes >= 3) { if (state >= M) goto refilled; state = (state << 8) | *--tail; }
-            if constexpr (max_bytes >= 2) { if (state >= M) goto refilled; state = (state << 8) | *--tail; }
-            if constexpr (max_bytes >= 1) { if (state >= M) goto refilled; state = (state << 8) | *--tail; }
-    refilled:
-
-            auto [q, slot] = l.divmod(state, M);
-            Shrub::rem_f cf;
-            u8 s = shrub.cdf2sym_dec(slot, cf);
-
-            state = q * cf.f + cf.rem;
-            out[M - 1] = s;
-        }
+    // refills up to n bytes
+    auto refill = [&]<auto n> {
+        if constexpr (n >= 4) { if (state >= M) return; pull_byte(); }
+        if constexpr (n >= 3) { if (state >= M) return; pull_byte(); }
+        if constexpr (n >= 2) { if (state >= M) return; pull_byte(); }
+        if constexpr (n >= 1) { if (state >= M) return; pull_byte(); }
     };
 
-    loop.operator()<16777218, 4>();
-    loop.operator()<65538, 3>();
-    loop.operator()<258, 2>();
-    loop.operator()<3, 1>();
-
-    // once the byte stream is exhausted there may still be enough state to decode more symbols
-    // the specialized loops above are guarded by the number of bytes available
-    // so the generic form finishes the job
-    for (; M > 1; M--) {
-        while (state < M && tail > base)
-            state = (state << 8) | *--tail;
-
+    auto decode_one = [&] {
         auto [q, slot] = l.divmod(state, M);
         Shrub::rem_f cf;
         u8 s = shrub.cdf2sym_dec(slot, cf);
 
         state = q * cf.f + cf.rem;
         out[M - 1] = s;
-    }
+    };
 
+    // the first refill reads the encoder's final state flush
+    // after that, each symbol can only have emitted this many renorm bytes
+    while (state < M && tail > base)
+        pull_byte();
+
+    auto loop = [&]<auto n> {
+        auto min_M = 1ull << ((n-1) * 8);
+        for (; M > min_M && tail - base >= n; M--) {
+            refill.template operator()<n>();
+            decode_one();
+        }
+    };
+
+    loop.operator()<4>();
+    loop.operator()<3>();
+    loop.operator()<2>();
+    loop.operator()<1>();
+
+    // loop<0> either decoded down to M == 1 or consumed the last rans byte
+    // but the residual state may still identify a mixed prefix
+    // e.g.: a short block run like "aabbcc" reaches here with no bytes left
+    // and decodes the c/b symbols while state >= M
+    for (; M > 1 && state >= M; M--)
+        decode_one();
+
+    // on the very final iteration:
+    //
     // state' = state/M * f + slot - c
     //
     // the final iteration has a bunch of nice properties
@@ -178,12 +163,18 @@ void erans_state::decode_to(std::span<u8> out) {
     //
     // i.e. a stream with 1 symbol is a stream where all symbols are identical
     // and each symbol adds 0 information
-    //
-    // so we already know the final state, and we don't need to try to refill
-    // the symbol is whatever is left in the shrub
+
+    // so, after breaking out of the previous loop, the state is 1
+    // the remaining prefix is a run of the last symbol in the shrub
+    // and we don't need the full decode and state change
 
     u32 s = shrub.lastsymbol();
-    out[0] = s;
+    std::memset(out.data(), s, M);
+
+    // if (state != 1) {
+    //     fprintf(stderr, "BUG!!!! state==%u but it should be 1\n", u32(state));
+    //     exit(1);
+    // }
 }
 
 void erans_decode_simple(std::string_view in, std::string& out) {
