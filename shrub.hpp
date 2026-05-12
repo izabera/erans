@@ -112,11 +112,11 @@ struct Shrub {
 
     // an extremely performance critical case that definitely needed to be special cased
     u8 lastsymbol() const {
-        u32 hi = to_mask(top > 0);
-        u32 tz1 = __tzcnt_u16(hi) - 1;
-        u32 lo = to_mask(bottom[tz1] > 0);
-        u32 tz2 = __tzcnt_u16(lo) - 1;
-        return tz1 << 4 | tz2;
+        u32 hi = to_mask(top <= 0);
+        u32 lz1 = 31 - __builtin_clz(hi);
+        u32 lo = to_mask(bottom[lz1] <= 0);
+        u32 lz2 = 31 - __builtin_clz(lo);
+        return lz1 << 4 | lz2;
     }
 
     // yolo

@@ -39,30 +39,6 @@ Simd(64)
 #undef Simd
 
 __attribute__((always_inline))
-static inline u32 cmp_le_mask(i32x16 a, i32x16 b) {
-#if defined(__AVX512F__)
-    return _mm512_cmple_epi32_mask((__m512i)a, (__m512i)b);
-#elif defined(__AVX2__)
-    using i32x8_a __attribute__((may_alias)) = i32x8;
-    auto a_lo = ((const i32x8_a*)&a)[0];
-    auto a_hi = ((const i32x8_a*)&a)[1];
-    auto b_lo = ((const i32x8_a*)&b)[0];
-    auto b_hi = ((const i32x8_a*)&b)[1];
-    auto le_lo = a_lo <= b_lo;
-    auto le_hi = a_hi <= b_hi;
-    u32 m_lo = _mm256_movemask_ps((__m256)le_lo);
-    u32 m_hi = _mm256_movemask_ps((__m256)le_hi);
-    return m_lo | (m_hi << 8);
-#else
-    u32 mask = 0;
-    auto cmp = a <= b;
-    for (int i = 0; i < 16; i++)
-        if (cmp[i]) mask |= (1 << i);
-    return mask;
-#endif
-}
-
-__attribute__((always_inline))
 static inline u32 to_mask(i32x16 a) {
 #if defined(__AVX512F__)
     return _mm512_test_epi32_mask((__m512i)a, (__m512i)a);
