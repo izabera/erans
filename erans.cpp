@@ -3,6 +3,7 @@
 #include "shrub.hpp"
 #include "types.hpp"
 #include <cstring>
+#include <span>
 
 // in-chunk layout:
 //   [ rANS-encoded bytes ] [ unary ] [ binary (32*k) ] [ k (1 byte) ]
@@ -83,23 +84,25 @@ void erans_encode(std::string_view in, std::string& out) {
     out.resize(rans_end + hist_size);
 }
 
-void erans_decode(std::string_view in, std::string& out) {
-    Shrub shrub;
+std::span<const u8> erans_decode_shrub(std::span<const u8> in, Shrub& shrub) {
+    shrub = {};
 
-    auto base   = reinterpret_cast<u8*>(const_cast<char*>(in.data()));
-    auto in_end = base + in.size();
+    auto base   = in.data();
+    auto in_end = const_cast<u8*>(base + in.size());
 
     auto rans_end = shrub.decode_rev(in_end);
+    return {base, size_t(rans_end - base)};
+}
 
-    u32 total = 0;
-    for (auto c : shrub.counts) total += c;
+void erans_decode_to(std::span<const u8> rans, Shrub& shrub, std::span<u8> out) {
+    // if (shrub.size() != out.size()) {
+    //     fprintf(stderr, "BUG!!!! shrub.size()==%u out.size()==%zu\n", shrub.size(), out.size());
+    //     exit(1);
+    // }
+    auto base = rans.data();
+    auto tail = base + rans.size();
 
-    out.clear();
-    out.resize(total);
-
-    auto tail = rans_end;
-
-    u64 state = 0, M = total;
+    u64 state = 0, M = out.size();
 
     // loop down to M == 2
     for (; M > 1; M--) {
@@ -119,24 +122,8 @@ void erans_decode(std::string_view in, std::string& out) {
         u8 s = shrub.cdf2sym_dec(slot, cf);
 
         state = q * cf.f + cf.rem;
-        out[M - 1] = char(s);
+        out[M - 1] = s;
     }
-
-#if 0
-    while (state < M && tail > base)
-        state = (state << 8) | *--tail;
-
-    u32 q = state, slot = 0;
-    Shrub::cf cf;
-    u8 s = shrub.cdf2sym_dec(slot, cf);
-
-    state = q * cf.f + (slot - cf.c);
-    // if (state != 1) {
-    //     fprintf(stderr, "BUG!!!! decoder state = %u %u%%%u=%u total=%u\n", u32(state), u32(M), slot, total);
-    //     exit(1);
-    // }
-    out[M - 1] = char(s);
-#endif
 
     // state' = state/M * f + slot - c
     //
@@ -156,5 +143,14 @@ void erans_decode(std::string_view in, std::string& out) {
     // the symbol is whatever is left in the shrub
 
     u32 s = shrub.lastsymbol();
-    out[0] = char(s);
+    out[0] = s;
+}
+
+void erans_decode(std::string_view in, std::string& out) {
+    auto bytes = std::span{reinterpret_cast<const u8*>(in.data()), in.size()};
+    Shrub shrub;
+    auto rans = erans_decode_shrub(bytes, shrub);
+
+    out.resize(shrub.size());
+    erans_decode_to(rans, shrub, std::span{reinterpret_cast<u8*>(out.data()), out.size()});
 }

@@ -227,19 +227,22 @@ u8* Shrub::decode(u8 *bytes) {
     bytes = dec_binary(k, counts, bytes);
     bytes = dec_unary (k, counts, bytes);
 
-    // rebuild shrub state
+    rebuild();
+    return bytes;
+}
+
+void Shrub::rebuild() {
     u32 c = 0;
     for (u32 g = 0; g < 16; g++) {
         top[g] = c;
-        u32 g_cum = 0;
+        u32 total = 0;
         for (u32 l = 0; l < 16; l++) {
             u8 s = (g << 4) | l;
-            bottom[g][l] = g_cum;
-            g_cum += counts[s];
+            bottom[g][l] = total;
+            total += counts[s];
         }
-        c += g_cum;
+        c += total;
     }
-    return bytes;
 }
 
 
@@ -283,18 +286,7 @@ u8* Shrub::decode_rev(u8 *end) {
     end -= 32 * k;
     dec_binary(k, counts, end);          // forward, reads 32*k bytes from end
     end = dec_unary_rev(k, counts, end); // backward, returns start of unary
-
-    u32 c = 0;
-    for (u32 g = 0; g < 16; g++) {
-        top[g] = c;
-        u32 g_cum = 0;
-        for (u32 l = 0; l < 16; l++) {
-            u8 s = (g << 4) | l;
-            bottom[g][l] = g_cum;
-            g_cum += counts[s];
-        }
-        c += g_cum;
-    }
+    rebuild();
     return end;
 }
 

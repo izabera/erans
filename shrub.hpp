@@ -1,3 +1,4 @@
+#pragma once
 #include "types.hpp"
 #include <cassert>
 
@@ -125,5 +126,13 @@ struct Shrub {
     u8* encode_rev(u8 *end); // reverse layout: [..unary..][..binary..][k]
     u8* decode_rev(u8 *end); // both iterate from the end and return the start
 
+    u32 size() const {
+        u32 total = 0;
+        for (auto c : counts)
+            total += c;
+        return total;
+    }
+
+    void rebuild();
     void debug() const;
 };
