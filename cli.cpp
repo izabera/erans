@@ -55,7 +55,7 @@ int main(int argc, char **argv) {
         if (fwrite(&magic, sizeof magic, 1, out) != 1)
             error("io error");
         while ((raw_count = fread(rptr, 1, erans_maxsize, in))) {
-            erans_encode({rbuf.data(), raw_count}, wbuf);
+            erans_encode_simple({rbuf.data(), raw_count}, wbuf);
             enc_count = wbuf.size();
             if (fwrite(&enc_count, sizeof enc_count, 1, out) != 1 ||
                 fwrite(wptr, 1, enc_count, out) != enc_count)
@@ -66,14 +66,14 @@ int main(int argc, char **argv) {
     else if (mode == "decode") {
         if (fread(&tmp, sizeof tmp, 1, in) != 1 || tmp != magic)
             error("bad magic");
-        Shrub shrub;
         while (fread(&enc_count, sizeof enc_count, 1, in)) {
             if (fread(rptr, enc_count, 1, in) != 1)
                 error("io error");
-            auto rans = erans_decode_shrub({rptr, enc_count}, shrub);
-            raw_count = shrub.size();
+            erans_state state;
+            state.decode_shrub({rbuf.data(), enc_count});
+            raw_count = state.shrub.size();
             wbuf.resize(raw_count);
-            erans_decode_to(rans, shrub, {wptr, wbuf.size()});
+            state.decode_to({wptr, wbuf.size()});
             if (fwrite(wptr, 1, raw_count, out) != raw_count)
                 error("write error");
             progress();

@@ -13,7 +13,7 @@
 // where it starts -- that's also where rANS ends.
 
 static lemire l;
-void erans_encode(std::string_view in, std::string& out) {
+void erans_encode_simple(std::string_view in, std::string& out) {
     Shrub shrub;
 
     u64 state = 1;
@@ -84,23 +84,23 @@ void erans_encode(std::string_view in, std::string& out) {
     out.resize(rans_end + hist_size);
 }
 
-std::span<const u8> erans_decode_shrub(std::span<const u8> in, Shrub& shrub) {
+void erans_state::decode_shrub(std::string_view in) {
     shrub = {};
 
-    auto base   = in.data();
-    auto in_end = const_cast<u8*>(base + in.size());
+    auto base   = reinterpret_cast<const u8*>(in.data());
+    auto in_end = const_cast<u8*>(base) + in.size();
 
     auto rans_end = shrub.decode_rev(in_end);
-    return {base, size_t(rans_end - base)};
+    stream = {base, size_t(rans_end - base)};
 }
 
-void erans_decode_to(std::span<const u8> rans, Shrub& shrub, std::span<u8> out) {
+void erans_state::decode_to(std::span<u8> out) {
     // if (shrub.size() != out.size()) {
     //     fprintf(stderr, "BUG!!!! shrub.size()==%u out.size()==%zu\n", shrub.size(), out.size());
     //     exit(1);
     // }
-    auto base = rans.data();
-    auto tail = base + rans.size();
+    auto base = stream.data();
+    auto tail = base + stream.size();
 
     u64 state = 0, M = out.size();
 
@@ -146,11 +146,9 @@ void erans_decode_to(std::span<const u8> rans, Shrub& shrub, std::span<u8> out) 
     out[0] = s;
 }
 
-void erans_decode(std::string_view in, std::string& out) {
-    auto bytes = std::span{reinterpret_cast<const u8*>(in.data()), in.size()};
-    Shrub shrub;
-    auto rans = erans_decode_shrub(bytes, shrub);
-
-    out.resize(shrub.size());
-    erans_decode_to(rans, shrub, std::span{reinterpret_cast<u8*>(out.data()), out.size()});
+void erans_decode_simple(std::string_view in, std::string& out) {
+    erans_state state;
+    state.decode_shrub(in);
+    out.resize(state.shrub.size());
+    state.decode_to(std::span{reinterpret_cast<u8*>(out.data()), out.size()});
 }
