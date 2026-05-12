@@ -88,8 +88,9 @@ static inline u32 to_mask(i32x16 a) {
     using i32x8_a __attribute__((may_alias)) = i32x8;
     auto a_lo = ((const i32x8_a*)&a)[0];
     auto a_hi = ((const i32x8_a*)&a)[1];
-    u32 m_lo = _mm256_movemask_ps((__m256)a_lo);
-    u32 m_hi = _mm256_movemask_ps((__m256)a_hi);
+    u32 m_lo, m_hi;
+    asm("vmovmskps %1, %0" : "=r"(m_lo) : "x"(a_lo));
+    asm("vmovmskps %1, %0" : "=r"(m_hi) : "x"(a_hi));
     return m_lo | (m_hi << 8);
 #else
     u32 mask = 0;
