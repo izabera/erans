@@ -73,6 +73,24 @@ struct Shrub {
     struct rem_f { u32 rem, f; };
     __attribute__((always_inline))
     u8 cdf2sym_dec(i32 target, rem_f& cf) {
+#if defined(__AVX512F__)
+        __mmask16 cmp_top = cmp_le_kmask(top, target);
+        u32 group = 31 - __builtin_clz((u32)cmp_top);
+
+        u32 top_c = reinterpret_cast<const i32_a*>(&top)[group];
+        i32 remainder = target - top_c;
+        top += kmask_not_vector(cmp_top);
+
+        __mmask16 cmp_bottom = cmp_le_kmask(bottom[group], remainder);
+        u32 lane = 31 - __builtin_clz((u32)cmp_bottom);
+        u8 s = (group << 4) | lane;
+        u32 bottom_c = reinterpret_cast<const i32_a*>(&bottom)[s];
+        cf.rem = remainder - bottom_c;
+        cf.f = counts[s]--;
+
+        bottom[group] += kmask_not_vector(cmp_bottom);
+        return s;
+#else
         auto cmp_top = top <= target;
         u32 group = 31 - __builtin_clz(to_mask(cmp_top));
 
@@ -89,6 +107,7 @@ struct Shrub {
 
         bottom[group] += ~cmp_bottom;
         return s;
+#endif
     }
 
     // likewise, in the encoder we're always doing inc -> sym2cdf

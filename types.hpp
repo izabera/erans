@@ -62,6 +62,20 @@ static inline u32 cmp_le_mask(i32x16 a, i32x16 b) {
 #endif
 }
 
+#if defined(__AVX512F__)
+__attribute__((always_inline))
+static inline __mmask16 cmp_le_kmask(i32x16 a, i32 b) {
+    return _mm512_cmple_epi32_mask((__m512i)a, _mm512_set1_epi32(b));
+}
+
+__attribute__((always_inline))
+static inline i32x16 kmask_not_vector(__mmask16 m) {
+    __mmask16 inv;
+    asm("knotw %1, %0" : "=k"(inv) : "k"(m));
+    return (i32x16)_mm512_movm_epi32(inv);
+}
+#endif
+
 __attribute__((always_inline))
 static inline u32 to_mask(i32x16 a) {
 #if defined(__AVX512F__)
