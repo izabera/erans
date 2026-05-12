@@ -104,20 +104,30 @@ void erans_state::decode_to(std::span<u8> out) {
 
     u64 state = 0, M = out.size();
 
+    // this loop does the same thing as the one after it, but it refills up to 4 bytes at a time
+    // which is enough because the encoder only emits up to 4 bytes at a time
+    for (; M > 1 && tail - base >= 4; M--) {
+        // this looks stupid but it's probably the fastest way to do it
+        if (state >= M) goto refilled; state = (state << 8) | *--tail;
+        if (state >= M) goto refilled; state = (state << 8) | *--tail;
+        if (state >= M) goto refilled; state = (state << 8) | *--tail;
+        if (state >= M) goto refilled; state = (state << 8) | *--tail;
+refilled:
+
+        auto [q, slot] = l.divmod(state, M);
+        Shrub::rem_f cf;
+        u8 s = shrub.cdf2sym_dec(slot, cf);
+
+        state = q * cf.f + cf.rem;
+        out[M - 1] = s;
+    }
+
     // loop down to M == 2
     for (; M > 1; M--) {
         while (state < M && tail > base)
             state = (state << 8) | *--tail;
 
         auto [q, slot] = l.divmod(state, M);
-        // if (q != state/M) {
-        //     fprintf(stderr, "BUG!!!! %u/%u=%u total=%u\n", u32(state), u32(M), q, total);
-        //     exit(1);
-        // }
-        // if (slot != state%M) {
-        //     fprintf(stderr, "BUG!!!! %u%%%u=%u total=%u\n", u32(state), u32(M), slot, total);
-        //     exit(1);
-        // }
         Shrub::rem_f cf;
         u8 s = shrub.cdf2sym_dec(slot, cf);
 
