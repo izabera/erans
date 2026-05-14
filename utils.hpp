@@ -3,8 +3,6 @@
 
 [[noreturn]] void error(const char *msg);
 
-void *makecache(size_t size, const char *cache);
-
 struct Lemire {
     u64 *data;
     Lemire(u32 max = 1<<24, const char *cache = "/tmp/lemirecache");
