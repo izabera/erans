@@ -27,7 +27,9 @@ struct Lemire {
     }
 };
 
-#include <math.h>
+#ifdef PRINT_STATS
+#include <cmath>
+#include <concepts>
 
 struct Log {
     long double *data = nullptr;
@@ -35,3 +37,4 @@ struct Log {
     auto operator()(std::integral auto n) const { return data[n]; }
     auto operator()(auto n) const { return std::logl(n); }
 };
+#endif

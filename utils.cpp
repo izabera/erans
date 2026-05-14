@@ -70,6 +70,7 @@ Lemire::Lemire(u32 max, const char *cache) {
     madvise(data, size, MADV_SEQUENTIAL);
 }
 
+#ifdef PRINT_STATS
 Log::Log(u32 max, const char *cache) {
     auto size = round_up((max+1) * sizeof *data);
 
@@ -83,3 +84,4 @@ Log::Log(u32 max, const char *cache) {
     data = makecache<long double>(size, cache, fill);
     madvise(data, size, MADV_SEQUENTIAL);
 }
+#endif
