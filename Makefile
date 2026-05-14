@@ -20,13 +20,12 @@ ifeq ($(call ZMM_PROBE,),0)
   endif
 endif
 
-cli: shrub.o erans.o cli.o lemire.o utils.o
+cli: shrub.o erans.o cli.o utils.o
 
-cli.o: cli.cpp erans.hpp utils.hpp types.hpp
-erans.o: erans.cpp erans.hpp lemire.hpp shrub.hpp types.hpp
+cli.o: cli.cpp erans.hpp types.hpp utils.hpp
+erans.o: erans.cpp erans.hpp shrub.hpp types.hpp utils.hpp
 shrub.o: shrub.cpp shrub.hpp erans.hpp types.hpp
-lemire.o: lemire.cpp lemire.hpp types.hpp utils.hpp
-utils.o: utils.cpp utils.hpp
+utils.o: types.hpp utils.cpp utils.hpp
 
 TMPDIR = /dev/shm
 DIR = dir=$$(pwd); cd $(TMPDIR);

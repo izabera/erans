@@ -1,9 +1,12 @@
 #include "erans.hpp"
-#include "lemire.hpp"
+#include "utils.hpp"
 #include "shrub.hpp"
 #include "types.hpp"
 #include <cstring>
 #include <span>
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <unistd.h>
 
 // in-chunk layout:
 //   [ rANS-encoded bytes ] [ unary ] [ binary (32*k) ] [ k (1 byte) ]
@@ -12,7 +15,12 @@
 // (fixed size 32*k), then walks the unary section backward to learn
 // where it starts -- that's also where rANS ends.
 
-static lemire l;
+static Lemire l;
+
+#ifdef PRINT_STATS
+static Log Log;
+#endif
+
 void erans_encode_simple(std::string_view in, std::string& out) {
     Shrub shrub;
 
@@ -27,6 +35,10 @@ void erans_encode_simple(std::string_view in, std::string& out) {
     out.resize(N + max_hist + 16 + 8);
     auto base = reinterpret_cast<u8*>(out.data());
     auto p = base;
+
+#ifdef PRINT_STATS
+    long double eh = 0; // enumerative entropy
+#endif
 
     for (u64 M = 1; M <= N; M++) {
         u8 s = u8(in[M - 1]);
@@ -63,6 +75,10 @@ void erans_encode_simple(std::string_view in, std::string& out) {
             r = m;
         }
         state = q * M + r + c;
+
+#ifdef PRINT_STATS
+        eh -= Log(f);
+#endif
     }
 
     // flush state byte by byte; the decoder pulls them back from the tail
@@ -82,6 +98,31 @@ void erans_encode_simple(std::string_view in, std::string& out) {
     if (start_p != rans_end_ptr)
         std::memmove(rans_end_ptr, start_p, hist_size);
     out.resize(rans_end + hist_size);
+
+#ifdef PRINT_STATS
+    eh += std::lgammal(N);
+
+    long double h = 0; // classic shannon entropy
+    for (auto f : shrub.counts) {
+        if (f)
+            h -= f * (Log(f) - Log(N));
+    }
+
+    auto eh_bytes = eh / Log(2) / 8;
+    auto h_bytes = h / Log(2) / 8;
+
+    fprintf(stderr, "\n\n");
+    fprintf(stderr, "enumerative limit in bytes:        %15.5Lf\n", eh_bytes);
+    fprintf(stderr, "shannon limit in bytes:            %15.5Lf\n", h_bytes);
+    fprintf(stderr, "shannon overhead over enumerative: %15.5Lf\n", h_bytes-eh_bytes);
+    fprintf(stderr, "optimal cost of histogram:         %15.5Lf\n", h_bytes-eh_bytes);
+    fprintf(stderr, "erans stream length:               %15.5Lf\n", (long double)rans_end);
+    fprintf(stderr, "erans hist length:                 %15.5Lf\n", (long double)hist_size);
+    fprintf(stderr, "erans total length:                %15.5Lf\n", (long double)out.size());
+    fprintf(stderr, "erans renorm overhead:             %15.5Lf\n", rans_end-eh_bytes);
+    fprintf(stderr, "erans overhead per byte:           %15.5Lf\n", (out.size()-eh_bytes)/out.size());
+    fprintf(stderr, "\n\n");
+#endif
 }
 
 void erans_state::decode_shrub(std::string_view in) {
