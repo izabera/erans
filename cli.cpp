@@ -1,6 +1,8 @@
 #include "erans.hpp"
 #include "fse_wrapper.hpp"
+#include "hts_wrapper.hpp"
 #include "nayuki.hpp"
+#include "ryg_wrapper.hpp"
 #include "utils.hpp"
 #include "types.hpp"
 #include <cstdio>
@@ -15,6 +17,9 @@ enum class Codec {
     fse,
     nayuki_static,
     nayuki_adaptive,
+    hts_rans4x16,
+    hts_arith,
+    ryg_rans64,
 };
 
 struct CodecSpec {
@@ -27,10 +32,16 @@ static CodecSpec parse_codec(std::string_view name, const char *usage) {
         return {Codec::erans, "erans"};
     if (name == "fse")
         return {Codec::fse, "fse"};
-    if (name == "nayuki-static" || name == "arith-static" || name == "static")
+    if (name == "nayuki-static")
         return {Codec::nayuki_static, "nayuki-static"};
-    if (name == "nayuki-adaptive" || name == "arith-adaptive" || name == "adaptive")
+    if (name == "nayuki-adaptive")
         return {Codec::nayuki_adaptive, "nayuki-adaptive"};
+    if (name == "hts-rans4x16")
+        return {Codec::hts_rans4x16, "hts-rans4x16"};
+    if (name == "hts-arith")
+        return {Codec::hts_arith, "hts-arith"};
+    if (name == "ryg-rans64")
+        return {Codec::ryg_rans64, "ryg-rans64"};
     error(usage);
 }
 
@@ -47,6 +58,15 @@ static void encode_block(Codec codec, std::string_view in, std::string& out) {
         return;
     case Codec::nayuki_adaptive:
         nayuki_adaptive_encode(in, out);
+        return;
+    case Codec::hts_rans4x16:
+        hts_rans4x16_encode(in, out);
+        return;
+    case Codec::hts_arith:
+        hts_arith_encode(in, out);
+        return;
+    case Codec::ryg_rans64:
+        ryg_rans64_encode(in, out);
         return;
     }
     error("unknown codec");
@@ -66,14 +86,23 @@ static void decode_block(Codec codec, std::string_view in, std::string& out) {
     case Codec::nayuki_adaptive:
         nayuki_adaptive_decode(in, out);
         return;
+    case Codec::hts_rans4x16:
+        hts_rans4x16_decode(in, out);
+        return;
+    case Codec::hts_arith:
+        hts_arith_decode(in, out);
+        return;
+    case Codec::ryg_rans64:
+        ryg_rans64_decode(in, out);
+        return;
     }
     error("unknown codec");
 }
 
 int main(int argc, char **argv) {
     auto usage = "usage:\n"
-                 "    erans-cli [--codec erans|fse|nayuki-static|nayuki-adaptive] encode [infile [outfile]]\n"
-                 "    erans-cli [--codec erans|fse|nayuki-static|nayuki-adaptive] decode [infile [outfile]]\n"
+                 "    erans-cli [--codec erans|fse|nayuki-static|nayuki-adaptive|hts-rans4x16|hts-arith|ryg-rans64] encode [infile [outfile]]\n"
+                 "    erans-cli [--codec erans|fse|nayuki-static|nayuki-adaptive|hts-rans4x16|hts-arith|ryg-rans64] decode [infile [outfile]]\n"
                //"    erans-cli info   [file]\n"
                  ;
 
