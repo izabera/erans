@@ -85,3 +85,82 @@ Log::Log(u32 max, const char *cache) {
     madvise(data, size, MADV_SEQUENTIAL);
 }
 #endif
+
+#if 0
+#include "erans.hpp"
+#include <cstring>
+#include <string>
+struct fileio::impl {
+    constexpr static u32 magic = 0xf0cacc1a;
+
+    size_t size = 0;
+    size_t off = 0;
+    FILE *fptr = nullptr;
+    u8 *map = nullptr;
+
+    std::string buf;
+    bool is_input, is_encoder;
+
+    impl(const char *name, bool is_input, bool is_encoder, size_t size_hint) :
+        is_input(is_input), is_encoder(is_encoder)
+    {
+        int fd;
+        if (is_input)
+            fd = open(name, O_RDONLY);
+        else
+            fd = open(name, O_RDWR|O_CREAT|O_TRUNC, 0644);
+        if (fd == -1)
+            error("could not open file");
+
+        struct stat st{};
+        fstat(fd, &st);
+
+        size = is_input ? st.st_size : size_hint;
+        auto mapsize = round_up(size);
+
+        if (size > 0) {
+            if (is_input)
+                map = static_cast<u8*>(mmap(0, PROT_READ, mapsize, MAP_PRIVATE, fd, 0));
+            else {
+                ftruncate(fd, size);
+                map = static_cast<u8*>(mmap(0, PROT_READ|PROT_WRITE, mapsize, MAP_SHARED, fd, 0));
+            }
+        }
+
+        if (map != nullptr && map != MAP_FAILED) {
+            close(fd);
+            madvise(map, size, MADV_SEQUENTIAL);
+            madvise(map, size, MADV_HUGEPAGE);
+        }
+        else
+            fptr = fdopen(fd, is_input ? "rb" : "wb");
+
+        if (is_input) {
+            u32 tmp{};
+            auto buf = get(4);
+            std::memcpy(&tmp, buf.data(), buf.size());
+            if (tmp != magic)
+                error("bad magic");
+        }
+        else {
+        }
+    }
+
+    ~impl() {
+        if (fptr)
+            fclose(fptr);
+        else if (map)
+            munmap(map, size);
+    }
+
+    bool advance() { return {}; }
+    std::span<u8> get(size_t size = erans_maxsize) { return {}; }
+};
+
+fileio::fileio(const char *name, bool is_input, bool is_encoder, size_t size_hint) :
+    ioimpl(new impl(name, is_input, is_encoder, size_hint)) {}
+fileio::~fileio() { delete ioimpl; }
+
+std::span<u8> fileio::get() const { return ioimpl->get(); }
+bool fileio::advance() { return ioimpl->advance(); }
+#endif

@@ -1,5 +1,6 @@
 #pragma once
 #include "types.hpp"
+#include <span>
 
 [[noreturn]] void error(const char *msg);
 
@@ -38,3 +39,28 @@ struct Log {
     auto operator()(auto n) const { return std::logl(n); }
 };
 #endif
+
+struct fileio {
+    struct impl;
+    impl *ioimpl;
+
+    fileio(const char *name, bool is_input, bool is_encoder, size_t size_hint);
+    ~fileio();
+    fileio(fileio&&) = delete;
+    fileio(const fileio&) = delete;
+    fileio& operator=(fileio&&) = delete;
+    fileio& operator=(const fileio&) = delete;
+
+    struct it {
+        fileio *ptr;
+        bool operator==(const it&) const = default;
+        bool operator!=(const it&) const = default;
+        auto operator++() { if (!ptr->advance()) ptr = nullptr; }
+        auto operator*() const { return ptr->get(); }
+    };
+    it begin() { return {this}; }
+    it end() const { return {}; }
+
+    std::span<u8> get() const; // gets buffer
+    bool advance(); // invalidates contents of buffer
+};
