@@ -4,4 +4,7 @@ silesia
 *.[os]
 *.mca
 cli
+fuzzer
+fuzzer-libfuzzer
+fuzzer-san
 *.zip

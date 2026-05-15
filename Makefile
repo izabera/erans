@@ -27,6 +27,24 @@ erans.o: erans.cpp erans.hpp shrub.hpp types.hpp utils.hpp
 shrub.o: shrub.cpp shrub.hpp erans.hpp types.hpp
 utils.o: types.hpp utils.cpp utils.hpp
 
+fuzzer: shrub.o erans.o fuzzer.o utils.o
+
+fuzzer.o: fuzzer.cpp erans.hpp types.hpp
+
+# libFuzzer build: requires clang. produces a binary that takes a corpus dir.
+# usage: make fuzzer-libfuzzer && ./fuzzer-libfuzzer corpus/
+fuzzer-libfuzzer: fuzzer.cpp shrub.cpp erans.cpp utils.cpp
+	$(CXX) $(CXXFLAGS) -DLIBFUZZER -fsanitize=fuzzer,address,undefined $^ -o $@
+
+# asan/ubsan build for the standalone fuzzer (slower, catches more)
+fuzzer-san: fuzzer.cpp shrub.cpp erans.cpp utils.cpp
+	$(CXX) $(CXXFLAGS) -fsanitize=address,undefined $^ -o $@
+
+fuzz: fuzzer
+	./fuzzer
+
+.PHONY: fuzz
+
 TMPDIR = /dev/shm
 DIR = dir=$$(pwd); cd $(TMPDIR);
 
