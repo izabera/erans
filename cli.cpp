@@ -18,7 +18,6 @@ enum class Codec {
     nayuki_static,
     nayuki_adaptive,
     hts_rans4x16,
-    hts_arith,
     ryg_rans64,
 };
 
@@ -38,8 +37,6 @@ static CodecSpec parse_codec(std::string_view name, const char *usage) {
         return {Codec::nayuki_adaptive, "nayuki-adaptive"};
     if (name == "hts-rans4x16")
         return {Codec::hts_rans4x16, "hts-rans4x16"};
-    if (name == "hts-arith")
-        return {Codec::hts_arith, "hts-arith"};
     if (name == "ryg-rans64")
         return {Codec::ryg_rans64, "ryg-rans64"};
     error(usage);
@@ -61,9 +58,6 @@ static void encode_block(Codec codec, std::string_view in, std::string& out) {
         return;
     case Codec::hts_rans4x16:
         hts_rans4x16_encode(in, out);
-        return;
-    case Codec::hts_arith:
-        hts_arith_encode(in, out);
         return;
     case Codec::ryg_rans64:
         ryg_rans64_encode(in, out);
@@ -89,9 +83,6 @@ static void decode_block(Codec codec, std::string_view in, std::string& out) {
     case Codec::hts_rans4x16:
         hts_rans4x16_decode(in, out);
         return;
-    case Codec::hts_arith:
-        hts_arith_decode(in, out);
-        return;
     case Codec::ryg_rans64:
         ryg_rans64_decode(in, out);
         return;
@@ -101,8 +92,8 @@ static void decode_block(Codec codec, std::string_view in, std::string& out) {
 
 int main(int argc, char **argv) {
     auto usage = "usage:\n"
-                 "    erans-cli [--codec erans|fse|nayuki-static|nayuki-adaptive|hts-rans4x16|hts-arith|ryg-rans64] encode [infile [outfile]]\n"
-                 "    erans-cli [--codec erans|fse|nayuki-static|nayuki-adaptive|hts-rans4x16|hts-arith|ryg-rans64] decode [infile [outfile]]\n"
+                 "    erans-cli [--codec erans|fse|nayuki-static|nayuki-adaptive|hts-rans4x16|ryg-rans64] encode [infile [outfile]]\n"
+                 "    erans-cli [--codec erans|fse|nayuki-static|nayuki-adaptive|hts-rans4x16|ryg-rans64] decode [infile [outfile]]\n"
                //"    erans-cli info   [file]\n"
                  ;
 

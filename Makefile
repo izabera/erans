@@ -27,13 +27,13 @@ ifeq ($(call ZMM_PROBE,),0)
   endif
 endif
 
-cli: shrub.o erans.o nayuki.o fse_wrapper.o hts_wrapper.o ryg_wrapper.o fse_compress.o fse_decompress.o entropy_common.o hist.o hts_arith_dynamic.o hts_rANS_static4x16pr.o hts_rANS_static32x16pr.o hts_utils.o hts_pack.o hts_rle.o cli.o utils.o ArithmeticCoder.o FrequencyTable.o BitIoStream.o
+cli: shrub.o erans.o nayuki.o fse_wrapper.o hts_wrapper.o ryg_wrapper.o fse_compress.o fse_decompress.o entropy_common.o hist.o hts_rANS_static4x16pr.o hts_rANS_static32x16pr.o hts_utils.o hts_pack.o hts_rle.o cli.o utils.o ArithmeticCoder.o FrequencyTable.o BitIoStream.o
 
 cli.o: cli.cpp erans.hpp fse_wrapper.hpp hts_wrapper.hpp nayuki.hpp ryg_wrapper.hpp types.hpp utils.hpp
 erans.o: erans.cpp erans.hpp shrub.hpp types.hpp utils.hpp
 nayuki.o: nayuki.cpp nayuki.hpp erans.hpp $(NAYUKI_DIR)/ArithmeticCoder.hpp $(NAYUKI_DIR)/BitIoStream.hpp $(NAYUKI_DIR)/FrequencyTable.hpp
 fse_wrapper.o: fse_wrapper.cpp fse_wrapper.hpp erans.hpp $(FSE_DIR)/fse.h
-hts_wrapper.o: hts_wrapper.cpp hts_wrapper.hpp erans.hpp types.hpp config.h $(HTS_DIR)/htscodecs/arith_dynamic.h $(HTS_DIR)/htscodecs/rANS_static4x16.h
+hts_wrapper.o: hts_wrapper.cpp hts_wrapper.hpp erans.hpp types.hpp config.h $(HTS_DIR)/htscodecs/rANS_static4x16.h
 ryg_wrapper.o: ryg_wrapper.cpp ryg_wrapper.hpp erans.hpp shrub.hpp types.hpp $(RYG_DIR)/rans64.h
 shrub.o: shrub.cpp shrub.hpp erans.hpp types.hpp
 utils.o: types.hpp utils.cpp utils.hpp
@@ -44,8 +44,6 @@ fse_decompress.o: $(FSE_DIR)/fse_decompress.c $(FSE_DIR)/fse.h
 entropy_common.o: $(FSE_DIR)/entropy_common.c $(FSE_DIR)/fse.h
 	$(CC) $(CFLAGS) -c $< -o $@
 hist.o: $(FSE_DIR)/hist.c $(FSE_DIR)/hist.h
-	$(CC) $(CFLAGS) -c $< -o $@
-hts_arith_dynamic.o: $(HTS_DIR)/htscodecs/arith_dynamic.c config.h
 	$(CC) $(CFLAGS) -c $< -o $@
 hts_rANS_static4x16pr.o: $(HTS_DIR)/htscodecs/rANS_static4x16pr.c config.h
 	$(CC) $(CFLAGS) -c $< -o $@
