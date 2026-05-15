@@ -308,7 +308,12 @@ the f = M case mirrors on the decoder side too: state stays at 1 throughout the
 all-same tail, slot = 1 % M = 1 always finds the only symbol with nonzero
 count, and the C step gives state = (1 // M) * M + 1 - 0 = 1.
 
-the pseudocode above looks incredibly slow.
+the renorm step allows erans to be streamable and implementable with finite
+precision arithmetic, but it introduces some overhead.
+to minimise it, the real code keeps the state in `[M*K, M*K*256)`.
+this doesn't really change anything else, and all the maths is identical.
+
+anyway, the pseudocode above looks incredibly slow.
 thankfully, modern hardware can do better.
 
 

@@ -10,20 +10,20 @@ struct Lemire {
     // this only works from 2 onwards
 
     __attribute__((always_inline))
-    u32 div(u32 a, u32 b) const { return (u128(a) * data[b]) >> 64; }
+    u64 div(u64 a, u32 b) const { return (u128(a) * data[b]) >> 64; }
 
     __attribute__((always_inline))
-    u32 mod(u32 a, u32 b) const {
+    u32 mod(u64 a, u32 b) const {
         u64 lo = u128(a) * data[b];
         return (lo * u128(b)) >> 64;
     }
 
-    struct dm { u32 d, m; };
+    struct dm { u64 d; u32 m; };
 
     __attribute__((always_inline))
-    dm divmod(u32 a, u32 b) const {
+    dm divmod(u64 a, u32 b) const {
         u32 q = div(a,b);
-        return {q, a-q*b};
+        return {q, u32(a-q*b)};
     }
 };
 

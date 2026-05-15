@@ -21,10 +21,18 @@ static Lemire l;
 static Log Log;
 #endif
 
+// state scaling parameter: the state is kept in [M*K, M*K*256)
+// the renorm error is proportional to 1/K^2, so we want this factor
+// to be as high as possible
+// to compute a/b with lemire reciprocals you need a*b < 2^64
+// since M reaches 2^24 the state must stay under 2^40
+// so 256 is the max value we can use
+static constexpr u64 K = 256;
+
 void erans_encode_simple(std::string_view in, std::string& out) {
     Shrub shrub;
 
-    u64 state = 1;
+    u64 state = K;
     auto N = in.size();
 
     // worst-case histogram size for k capped at 16
@@ -44,10 +52,10 @@ void erans_encode_simple(std::string_view in, std::string& out) {
         u8 s = u8(in[M - 1]);
         auto [c, f] = shrub.sym2cdf_inc(s);
 
-        // post-encode invariant is state in [M, 256*M); the C step lands
-        // there iff the pre-encode state is in [f, 256*f).  shift bytes
-        // out so that state < 256*f.  the lower bound is automatic since
-        // state >= M-1 >= f (the f == M case stays at state = 1 forever)
+        // post-encode invariant is state in [M*K, M*K*256); the C step lands
+        // there iff the pre-encode state is in [f*K, f*K*256).  shift bytes
+        // out so that state < f*K*256.  the lower bound is automatic since
+        // state >= (M-1)*K >= f*K (the f == M case stays at state = K forever)
 
         // branchless:
         // - 4 unrolled cmovs cover the worst case (f=1, state up to ~2^32)
@@ -55,7 +63,7 @@ void erans_encode_simple(std::string_view in, std::string& out) {
 
         // the tail bytes get overwritten by subsequent iterations or truncated at the end
 
-        u64 limit = u64(f) << 8;
+        u64 limit = u64(f * K) << 8;
         u64 orig = state;
 
         bool b0 = state >= limit; state = b0 ? state >> 8 : state;
@@ -111,6 +119,9 @@ void erans_encode_simple(std::string_view in, std::string& out) {
     auto eh_bytes = eh / Log(2) / 8;
     auto h_bytes = h / Log(2) / 8;
 
+    static u64 stream_total = 0;
+    stream_total += rans_end;
+
     fprintf(stderr, "\n\n");
     fprintf(stderr, "enumerative limit in bytes:        %15.5Lf\n", eh_bytes);
     fprintf(stderr, "shannon limit in bytes:            %15.5Lf\n", h_bytes);
@@ -121,6 +132,7 @@ void erans_encode_simple(std::string_view in, std::string& out) {
     fprintf(stderr, "erans total length:                %15.5Lf\n", (long double)out.size());
     fprintf(stderr, "erans renorm overhead:             %15.5Lf\n", rans_end-eh_bytes);
     fprintf(stderr, "erans overhead per byte:           %15.5Lf\n", (out.size()-eh_bytes)/out.size());
+    fprintf(stderr, "total stream bytes:                %9zu\n", stream_total);
     fprintf(stderr, "\n\n");
 #endif
 }
@@ -149,10 +161,10 @@ void erans_state::decode_to(std::span<u8> out) {
 
     // refills up to n bytes
     auto refill = [&]<auto n> {
-        if constexpr (n >= 4) { if (state >= M) return; pull_byte(); }
-        if constexpr (n >= 3) { if (state >= M) return; pull_byte(); }
-        if constexpr (n >= 2) { if (state >= M) return; pull_byte(); }
-        if constexpr (n >= 1) { if (state >= M) return; pull_byte(); }
+        if constexpr (n >= 4) { if (state >= M * K) return; pull_byte(); }
+        if constexpr (n >= 3) { if (state >= M * K) return; pull_byte(); }
+        if constexpr (n >= 2) { if (state >= M * K) return; pull_byte(); }
+        if constexpr (n >= 1) { if (state >= M * K) return; pull_byte(); }
     };
 
     auto decode_one = [&] {
@@ -166,7 +178,7 @@ void erans_state::decode_to(std::span<u8> out) {
 
     // the first refill reads the encoder's final state flush
     // after that, each symbol can only have emitted this many renorm bytes
-    while (state < M && tail > base)
+    while (state < M * K && tail > base)
         pull_byte();
 
     auto loop = [&]<auto n> {
@@ -185,8 +197,8 @@ void erans_state::decode_to(std::span<u8> out) {
     // loop<0> either decoded down to M == 1 or consumed the last rans byte
     // but the residual state may still identify a mixed prefix
     // e.g.: a short block run like "aabbcc" reaches here with no bytes left
-    // and decodes the c/b symbols while state >= M
-    for (; M > 1 && state >= M; M--)
+    // and decodes the c/b symbols while state >= M*K
+    for (; M > 1 && state >= M * K; M--)
         decode_one();
 
     // on the very final iteration:
@@ -195,25 +207,25 @@ void erans_state::decode_to(std::span<u8> out) {
     //
     // the final iteration has a bunch of nice properties
     // - M = 1
-    // - state' = 1
+    // - state' = K
     // - slot = 0
     // - c = 0
     // - f = 1
     //
-    // 1 = state/1 * 1 + 0 - 0     =>    state = 1
+    // K = state/1 * 1 + 0 - 0     =>    state = K
     //
     // i.e. a stream with 1 symbol is a stream where all symbols are identical
     // and each symbol adds 0 information
 
-    // so, after breaking out of the previous loop, the state is 1
+    // so, after breaking out of the previous loop, the state is K
     // the remaining prefix is a run of the last symbol in the shrub
     // and we don't need the full decode and state change
 
     u32 s = shrub.lastsymbol();
     std::memset(out.data(), s, M);
 
-    // if (state != 1) {
-    //     fprintf(stderr, "BUG!!!! state==%u but it should be 1\n", u32(state));
+    // if (state != K) {
+    //     fprintf(stderr, "BUG!!!! state==%u but it should be K\n", u32(state));
     //     exit(1);
     // }
 }

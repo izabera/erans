@@ -4,7 +4,7 @@ TARGET = native
 
 CXX = clang++
 MCAFLAGS = -mcpu=$(TARGET)
-CXXFLAGS = -march=$(TARGET) -std=c++23 -O3 -ffast-math -Wall -Wextra -Wno-psabi -ggdb3 -flto
+CXXFLAGS = -march=$(TARGET) -std=c++23 -O3 -ffast-math -Wall -Wextra -Wno-psabi -ggdb3 -flto $(EXTRA_CXXFLAGS)
 LDFLAGS = -flto
 LINK.o = $(CXX) $(LDFLAGS) $(TARGET_ARCH)
 ifeq ($(findstring clang,$(CXX)),clang)

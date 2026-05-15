@@ -27,7 +27,7 @@ t *makecache(size_t size, const char *cache, auto fill) {
 
     if (fd != -1) {
         flock(fd, LOCK_EX);
-        struct stat st;
+        struct stat st{};
         fstat(fd, &st);
 
         if (size_t(st.st_size) >= size || ftruncate(fd, size) == 0)
@@ -75,7 +75,7 @@ Log::Log(u32 max, const char *cache) {
     auto size = round_up((max+1) * sizeof *data);
 
     auto fill = [&](auto data) {
-        if (!data[max]) { // these values too are never 0
+        if (!data[max]) { // these values too are never 0 (unless max == 1 i guess)
             for (auto i = 0u; i <= max; i++)
                 data[i] = std::logl(i);
         }
