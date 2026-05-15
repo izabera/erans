@@ -14,6 +14,15 @@ try it:
 ```
 make cli
 make roundtrip
+make fuzz
+```
+
+`make fuzz` builds `fuzz_roundtrip` with libFuzzer, ASan, and UBSan, then runs
+a short roundtrip fuzz pass.  Useful overrides:
+
+```
+make fuzz FUZZ_ARGS="-max_total_time=300 -max_len=8192"
+make fuzz FUZZ_MAX_GENERATED=16777216
 ```
 
 

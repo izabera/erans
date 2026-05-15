@@ -27,6 +27,22 @@ erans.o: erans.cpp erans.hpp shrub.hpp types.hpp utils.hpp
 shrub.o: shrub.cpp shrub.hpp erans.hpp types.hpp
 utils.o: types.hpp utils.cpp utils.hpp
 
+FUZZ_MAX_GENERATED ?= 1048576
+FUZZ_ARGS ?= -max_total_time=30 -max_len=4096
+FUZZ_ENV ?= ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1
+FUZZ_SANITIZERS ?= fuzzer,address,undefined
+FUZZ_CXXFLAGS = -march=$(TARGET) -std=c++23 -O1 -g -fno-omit-frame-pointer -Wall -Wextra -Wno-psabi \
+	-DFUZZ_MAX_GENERATED=$(FUZZ_MAX_GENERATED) -fsanitize=$(FUZZ_SANITIZERS) $(EXTRA_FUZZ_CXXFLAGS)
+FUZZ_LDFLAGS = -fsanitize=$(FUZZ_SANITIZERS) $(EXTRA_FUZZ_LDFLAGS)
+
+fuzz_roundtrip: fuzz_roundtrip.cpp erans.cpp shrub.cpp utils.cpp erans.hpp shrub.hpp types.hpp utils.hpp
+	$(CXX) $(FUZZ_CXXFLAGS) fuzz_roundtrip.cpp erans.cpp shrub.cpp utils.cpp -o $@ $(FUZZ_LDFLAGS)
+
+fuzz: fuzz_roundtrip
+	$(FUZZ_ENV) ./fuzz_roundtrip $(FUZZ_ARGS)
+
+.PHONY: fuzz fuzz_roundtrip
+
 TMPDIR = /dev/shm
 DIR = dir=$$(pwd); cd $(TMPDIR);
 
@@ -72,5 +88,5 @@ enwik%: enwik%.zip
 	wget https://www.mattmahoney.net/dc/$@
 
 clean:
-	rm -rf *.[os] *.mca cli
+	rm -rf *.[os] *.mca cli fuzz_roundtrip
 .PHONY: clean
