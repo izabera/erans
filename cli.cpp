@@ -1,4 +1,5 @@
 #include "erans.hpp"
+#include "fse_wrapper.hpp"
 #include "nayuki.hpp"
 #include "utils.hpp"
 #include "types.hpp"
@@ -11,6 +12,7 @@
 
 enum class Codec {
     erans,
+    fse,
     nayuki_static,
     nayuki_adaptive,
 };
@@ -23,6 +25,8 @@ struct CodecSpec {
 static CodecSpec parse_codec(std::string_view name, const char *usage) {
     if (name == "erans")
         return {Codec::erans, "erans"};
+    if (name == "fse")
+        return {Codec::fse, "fse"};
     if (name == "nayuki-static" || name == "arith-static" || name == "static")
         return {Codec::nayuki_static, "nayuki-static"};
     if (name == "nayuki-adaptive" || name == "arith-adaptive" || name == "adaptive")
@@ -34,6 +38,9 @@ static void encode_block(Codec codec, std::string_view in, std::string& out) {
     switch (codec) {
     case Codec::erans:
         erans_encode_simple(in, out);
+        return;
+    case Codec::fse:
+        fse_encode(in, out);
         return;
     case Codec::nayuki_static:
         nayuki_static_encode(in, out);
@@ -50,6 +57,9 @@ static void decode_block(Codec codec, std::string_view in, std::string& out) {
     case Codec::erans:
         erans_decode_simple(in, out);
         return;
+    case Codec::fse:
+        fse_decode(in, out);
+        return;
     case Codec::nayuki_static:
         nayuki_static_decode(in, out);
         return;
@@ -62,8 +72,8 @@ static void decode_block(Codec codec, std::string_view in, std::string& out) {
 
 int main(int argc, char **argv) {
     auto usage = "usage:\n"
-                 "    erans-cli [--codec erans|nayuki-static|nayuki-adaptive] encode [infile [outfile]]\n"
-                 "    erans-cli [--codec erans|nayuki-static|nayuki-adaptive] decode [infile [outfile]]\n"
+                 "    erans-cli [--codec erans|fse|nayuki-static|nayuki-adaptive] encode [infile [outfile]]\n"
+                 "    erans-cli [--codec erans|fse|nayuki-static|nayuki-adaptive] decode [infile [outfile]]\n"
                //"    erans-cli info   [file]\n"
                  ;
 

@@ -3,9 +3,12 @@
 TARGET = native
 
 CXX = clang++
+CC = clang
 MCAFLAGS = -mcpu=$(TARGET)
 NAYUKI_DIR = ../Reference-arithmetic-coding/cpp
-CXXFLAGS = -march=$(TARGET) -std=c++23 -O3 -ffast-math -Wall -Wextra -Wno-psabi -ggdb3 -flto -I$(NAYUKI_DIR) $(EXTRA_CXXFLAGS)
+FSE_DIR = ../FiniteStateEntropy/lib
+CXXFLAGS = -march=$(TARGET) -std=c++23 -O3 -ffast-math -Wall -Wextra -Wno-psabi -ggdb3 -flto -I$(NAYUKI_DIR) -I$(FSE_DIR) $(EXTRA_CXXFLAGS)
+CFLAGS = -march=$(TARGET) -std=c99 -O3 -Wall -Wextra -ggdb3 -flto -I$(FSE_DIR) $(EXTRA_CFLAGS)
 LDFLAGS = -flto
 LINK.o = $(CXX) $(LDFLAGS) $(TARGET_ARCH)
 ifeq ($(findstring clang,$(CXX)),clang)
@@ -21,13 +24,22 @@ ifeq ($(call ZMM_PROBE,),0)
   endif
 endif
 
-cli: shrub.o erans.o nayuki.o ArithmeticCoder.o FrequencyTable.o BitIoStream.o cli.o utils.o
+cli: shrub.o erans.o nayuki.o fse_wrapper.o fse_compress.o fse_decompress.o entropy_common.o hist.o cli.o utils.o ArithmeticCoder.o FrequencyTable.o BitIoStream.o
 
-cli.o: cli.cpp erans.hpp nayuki.hpp types.hpp utils.hpp
+cli.o: cli.cpp erans.hpp fse_wrapper.hpp nayuki.hpp types.hpp utils.hpp
 erans.o: erans.cpp erans.hpp shrub.hpp types.hpp utils.hpp
 nayuki.o: nayuki.cpp nayuki.hpp erans.hpp $(NAYUKI_DIR)/ArithmeticCoder.hpp $(NAYUKI_DIR)/BitIoStream.hpp $(NAYUKI_DIR)/FrequencyTable.hpp
+fse_wrapper.o: fse_wrapper.cpp fse_wrapper.hpp erans.hpp $(FSE_DIR)/fse.h
 shrub.o: shrub.cpp shrub.hpp erans.hpp types.hpp
 utils.o: types.hpp utils.cpp utils.hpp
+fse_compress.o: $(FSE_DIR)/fse_compress.c $(FSE_DIR)/fse.h $(FSE_DIR)/hist.h
+	$(CC) $(CFLAGS) -c $< -o $@
+fse_decompress.o: $(FSE_DIR)/fse_decompress.c $(FSE_DIR)/fse.h
+	$(CC) $(CFLAGS) -c $< -o $@
+entropy_common.o: $(FSE_DIR)/entropy_common.c $(FSE_DIR)/fse.h
+	$(CC) $(CFLAGS) -c $< -o $@
+hist.o: $(FSE_DIR)/hist.c $(FSE_DIR)/hist.h
+	$(CC) $(CFLAGS) -c $< -o $@
 ArithmeticCoder.o: $(NAYUKI_DIR)/ArithmeticCoder.cpp $(NAYUKI_DIR)/ArithmeticCoder.hpp $(NAYUKI_DIR)/BitIoStream.hpp $(NAYUKI_DIR)/FrequencyTable.hpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 FrequencyTable.o: $(NAYUKI_DIR)/FrequencyTable.cpp $(NAYUKI_DIR)/FrequencyTable.hpp

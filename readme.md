@@ -16,14 +16,19 @@ make cli
 make roundtrip
 ```
 
-The CLI also supports Nayuki's reference arithmetic coders using the same
-outer frame format and 16MiB input blocks. The static arithmetic path uses the
-same compact histogram trailer as erans, while the adaptive arithmetic path
-uses Nayuki's EOF symbol because the outer frame does not store raw block
-sizes:
+The CLI also supports FSE and Nayuki's reference arithmetic coders using the
+same outer frame format and 16MiB input blocks. The FSE path stores the raw
+`FSE_compress()` payload for normal compressed blocks, avoiding the standalone
+FSE program's magic number, stream descriptor, per-block frame headers, and
+checksum. FSE's raw/RLE fallback cases use a small sentinel header because the
+library intentionally delegates those cases to the caller. The static arithmetic
+path uses the same compact histogram trailer as erans, while the adaptive
+arithmetic path uses Nayuki's EOF symbol because the outer frame does not store
+raw block sizes:
 
 ```
 ./cli --codec erans encode input output.erans
+./cli --codec fse encode input output.fse
 ./cli --codec nayuki-static encode input output.arith-static
 ./cli --codec nayuki-adaptive encode input output.arith-adaptive
 ```
