@@ -16,6 +16,17 @@ make cli
 make roundtrip
 ```
 
+The CLI also supports Nayuki's reference arithmetic coders using the same
+outer frame format and 16MiB input blocks:
+
+```
+./cli --codec erans encode input output.erans
+./cli --codec nayuki-static encode input output.arith-static
+./cli --codec nayuki-adaptive encode input output.arith-adaptive
+```
+
+Use the same `--codec` value when decoding one of these files.
+
 
 ----------
 

@@ -4,7 +4,8 @@ TARGET = native
 
 CXX = clang++
 MCAFLAGS = -mcpu=$(TARGET)
-CXXFLAGS = -march=$(TARGET) -std=c++23 -O3 -ffast-math -Wall -Wextra -Wno-psabi -ggdb3 -flto $(EXTRA_CXXFLAGS)
+NAYUKI_DIR = ../Reference-arithmetic-coding/cpp
+CXXFLAGS = -march=$(TARGET) -std=c++23 -O3 -ffast-math -Wall -Wextra -Wno-psabi -ggdb3 -flto -I$(NAYUKI_DIR) $(EXTRA_CXXFLAGS)
 LDFLAGS = -flto
 LINK.o = $(CXX) $(LDFLAGS) $(TARGET_ARCH)
 ifeq ($(findstring clang,$(CXX)),clang)
@@ -20,12 +21,19 @@ ifeq ($(call ZMM_PROBE,),0)
   endif
 endif
 
-cli: shrub.o erans.o cli.o utils.o
+cli: shrub.o erans.o nayuki.o ArithmeticCoder.o FrequencyTable.o BitIoStream.o cli.o utils.o
 
-cli.o: cli.cpp erans.hpp types.hpp utils.hpp
+cli.o: cli.cpp erans.hpp nayuki.hpp types.hpp utils.hpp
 erans.o: erans.cpp erans.hpp shrub.hpp types.hpp utils.hpp
+nayuki.o: nayuki.cpp nayuki.hpp erans.hpp $(NAYUKI_DIR)/ArithmeticCoder.hpp $(NAYUKI_DIR)/BitIoStream.hpp $(NAYUKI_DIR)/FrequencyTable.hpp
 shrub.o: shrub.cpp shrub.hpp erans.hpp types.hpp
 utils.o: types.hpp utils.cpp utils.hpp
+ArithmeticCoder.o: $(NAYUKI_DIR)/ArithmeticCoder.cpp $(NAYUKI_DIR)/ArithmeticCoder.hpp $(NAYUKI_DIR)/BitIoStream.hpp $(NAYUKI_DIR)/FrequencyTable.hpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+FrequencyTable.o: $(NAYUKI_DIR)/FrequencyTable.cpp $(NAYUKI_DIR)/FrequencyTable.hpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+BitIoStream.o: $(NAYUKI_DIR)/BitIoStream.cpp $(NAYUKI_DIR)/BitIoStream.hpp
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 TMPDIR = /dev/shm
 DIR = dir=$$(pwd); cd $(TMPDIR);
@@ -33,13 +41,14 @@ DIR = dir=$$(pwd); cd $(TMPDIR);
 $(TMPDIR)/enwik%: enwik%
 	cp $< $@
 
+CODEC = erans
 roundtrip: cli $(TMPDIR)/enwik8 $(TMPDIR)/enwik9
 	@ $(DIR) rm -f enwik*.erans*
-	@ $(DIR) $(PERF) $$dir/cli encode enwik8 enwik8.erans
-	@ $(DIR) $(PERF) $$dir/cli decode enwik8.erans enwik8.erans.decoded
+	@ $(DIR) $(PERF) $$dir/cli encode --codec=$(CODEC) enwik8 enwik8.erans
+	@ $(DIR) $(PERF) $$dir/cli decode --codec=$(CODEC) enwik8.erans enwik8.erans.decoded
 	@ $(DIR) cmp enwik8 enwik8.erans.decoded
-	@ $(DIR) $(PERF) $$dir/cli encode enwik9 enwik9.erans
-	@ $(DIR) $(PERF) $$dir/cli decode enwik9.erans enwik9.erans.decoded
+	@ $(DIR) $(PERF) $$dir/cli encode --codec=$(CODEC) enwik9 enwik9.erans
+	@ $(DIR) $(PERF) $$dir/cli decode --codec=$(CODEC) enwik9.erans enwik9.erans.decoded
 	@ $(DIR) cmp enwik9 enwik9.erans.decoded
 	@ $(DIR) wc -c enwik*
 	@ echo roundtrip ok

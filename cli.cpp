@@ -1,34 +1,117 @@
 #include "erans.hpp"
+#include "nayuki.hpp"
 #include "utils.hpp"
 #include "types.hpp"
 #include <cstdio>
 #include <chrono>
+#include <exception>
 #include <span>
 #include <string>
+#include <string_view>
+
+enum class Codec {
+    erans,
+    nayuki_static,
+    nayuki_adaptive,
+};
+
+struct CodecSpec {
+    Codec codec;
+    const char *name;
+};
+
+static CodecSpec parse_codec(std::string_view name, const char *usage) {
+    if (name == "erans")
+        return {Codec::erans, "erans"};
+    if (name == "nayuki-static" || name == "arith-static" || name == "static")
+        return {Codec::nayuki_static, "nayuki-static"};
+    if (name == "nayuki-adaptive" || name == "arith-adaptive" || name == "adaptive")
+        return {Codec::nayuki_adaptive, "nayuki-adaptive"};
+    error(usage);
+}
+
+static void encode_block(Codec codec, std::string_view in, std::string& out) {
+    switch (codec) {
+    case Codec::erans:
+        erans_encode_simple(in, out);
+        return;
+    case Codec::nayuki_static:
+        nayuki_static_encode(in, out);
+        return;
+    case Codec::nayuki_adaptive:
+        nayuki_adaptive_encode(in, out);
+        return;
+    }
+    error("unknown codec");
+}
+
+static void decode_block(Codec codec, std::string_view in, std::string& out) {
+    switch (codec) {
+    case Codec::erans:
+        erans_decode_simple(in, out);
+        return;
+    case Codec::nayuki_static:
+        nayuki_static_decode(in, out);
+        return;
+    case Codec::nayuki_adaptive:
+        nayuki_adaptive_decode(in, out);
+        return;
+    }
+    error("unknown codec");
+}
 
 int main(int argc, char **argv) {
     auto usage = "usage:\n"
-                 "    erans-cli encode [infile [outfile]]\n"
-                 "    erans-cli decode [infile [outfile]]\n"
+                 "    erans-cli [--codec erans|nayuki-static|nayuki-adaptive] encode [infile [outfile]]\n"
+                 "    erans-cli [--codec erans|nayuki-static|nayuki-adaptive] decode [infile [outfile]]\n"
                //"    erans-cli info   [file]\n"
                  ;
 
     if (argc < 2)
         error(usage);
 
-    auto mode = std::string(argv[1]);
+    CodecSpec codec = {Codec::erans, "erans"};
+    std::string mode;
+    const char *files[2] = {};
+    int file_count = 0;
+
+    for (int i = 1; i < argc; i++) {
+        std::string_view arg(argv[i]);
+        if (arg == "encode" || arg == "decode") {
+            if (!mode.empty())
+                error(usage);
+            mode = std::string(arg);
+        }
+        else if (arg == "--codec" || arg == "-c") {
+            if (++i == argc)
+                error(usage);
+            codec = parse_codec(argv[i], usage);
+        }
+        else if (arg.starts_with("--codec=")) {
+            codec = parse_codec(arg.substr(8), usage);
+        }
+        else if (arg == "--help" || arg == "-h") {
+            fputs(usage, stderr);
+            return 0;
+        }
+        else {
+            if (file_count == 2)
+                error(usage);
+            files[file_count++] = argv[i];
+        }
+    }
+
     if (mode != "encode" && mode != "decode")
         error(usage);
 
-    auto in  = argc > 2 ? fopen(argv[2], "rb") : stdin;
-    auto out = argc > 3 ? fopen(argv[3], "wb") : stdout;
+    auto in  = file_count > 0 ? fopen(files[0], "rb") : stdin;
+    auto out = file_count > 1 ? fopen(files[1], "wb") : stdout;
     if (!in || !out)
         error("could not open file");
 
     std::string rbuf(erans_maxsize*2, '\0'), wbuf;
     wbuf.reserve(erans_maxsize*2);
     auto rptr = reinterpret_cast<u8*>(rbuf.data());
-    auto wptr = reinterpret_cast<u8*>(wbuf.data());
 
     // really basic format:
     // <--hdr--> <-----frame----> <-----frame----> <-----frame----> 
@@ -45,39 +128,47 @@ int main(int argc, char **argv) {
         auto s = (t1-t0).count()/1e9;
         raw_total += raw_count;
         enc_total += enc_count;
-        fprintf(stderr, "\r%s: raw=%7.2fMB - %6.2fMB/s   enc=%7.2fMB - %6.2f MB/s   ",
+        fprintf(stderr, "\r%s/%s: raw=%7.2fMB - %6.2fMB/s   enc=%7.2fMB - %6.2f MB/s   ",
                 mode.data(),
+                codec.name,
                 raw_total/1e6, (raw_total/1e6) / s,
                 enc_total/1e6, (enc_total/1e6) / s);
     };
 
-    if (mode == "encode") {
-        if (fwrite(&magic, sizeof magic, 1, out) != 1)
-            error("io error");
-        while ((raw_count = fread(rptr, 1, erans_maxsize, in))) {
-            erans_encode_simple({rbuf.data(), raw_count}, wbuf);
-            enc_count = wbuf.size();
-            if (fwrite(&enc_count, sizeof enc_count, 1, out) != 1 ||
-                fwrite(wptr, 1, enc_count, out) != enc_count)
+    try {
+        if (mode == "encode") {
+            if (fwrite(&magic, sizeof magic, 1, out) != 1)
                 error("io error");
-            progress();
+            while ((raw_count = fread(rptr, 1, erans_maxsize, in))) {
+                encode_block(codec.codec, {rbuf.data(), raw_count}, wbuf);
+                enc_count = wbuf.size();
+                auto wptr = reinterpret_cast<const u8*>(wbuf.data());
+                if (fwrite(&enc_count, sizeof enc_count, 1, out) != 1 ||
+                    fwrite(wptr, 1, enc_count, out) != enc_count)
+                    error("io error");
+                progress();
+            }
         }
-    }
-    else if (mode == "decode") {
-        if (fread(&tmp, sizeof tmp, 1, in) != 1 || tmp != magic)
-            error("bad magic");
-        while (fread(&enc_count, sizeof enc_count, 1, in)) {
-            if (fread(rptr, enc_count, 1, in) != 1)
-                error("io error");
-            erans_state state;
-            state.decode_shrub({rbuf.data(), enc_count});
-            raw_count = state.shrub.size();
-            wbuf.resize(raw_count);
-            state.decode_to({wptr, wbuf.size()});
-            if (fwrite(wptr, 1, raw_count, out) != raw_count)
-                error("write error");
-            progress();
+        else if (mode == "decode") {
+            if (fread(&tmp, sizeof tmp, 1, in) != 1 || tmp != magic)
+                error("bad magic");
+            while (fread(&enc_count, sizeof enc_count, 1, in)) {
+                if (enc_count > rbuf.size()) {
+                    rbuf.resize(enc_count);
+                    rptr = reinterpret_cast<u8*>(rbuf.data());
+                }
+                if (fread(rptr, enc_count, 1, in) != 1)
+                    error("io error");
+                decode_block(codec.codec, {rbuf.data(), enc_count}, wbuf);
+                raw_count = wbuf.size();
+                auto wptr = reinterpret_cast<const u8*>(wbuf.data());
+                if (fwrite(wptr, 1, raw_count, out) != raw_count)
+                    error("write error");
+                progress();
+            }
         }
+    } catch (const std::exception& e) {
+        error(e.what());
     }
 
     auto t1 = std::chrono::steady_clock::now();
