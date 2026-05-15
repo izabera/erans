@@ -17,7 +17,10 @@ make roundtrip
 ```
 
 The CLI also supports Nayuki's reference arithmetic coders using the same
-outer frame format and 16MiB input blocks:
+outer frame format and 16MiB input blocks. The static arithmetic path uses the
+same compact histogram trailer as erans, while the adaptive arithmetic path
+uses Nayuki's EOF symbol because the outer frame does not store raw block
+sizes:
 
 ```
 ./cli --codec erans encode input output.erans
